@@ -1,0 +1,52 @@
+{
+  "name": "cabinguard",
+  "version": "0.1.0",
+  "description": "可信智能座舱任务 Agent：多轮工具调用、服务端安全边界、可观测执行与自动评测",
+  "private": true,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/whisper621/CabinGuard.git"
+  },
+  "keywords": [
+    "ai-agent",
+    "tool-calling",
+    "intelligent-cockpit",
+    "deepseek",
+    "nextjs"
+  ],
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "check": "npm run lint && npm run typecheck && npm run test:run && npm run build"
+  },
+  "dependencies": {
+    "@openai/agents": "^0.17.2",
+    "@radix-ui/react-icons": "^1.3.2",
+    "dotenv": "^16.4.7",
+    "next": "^16.3.4",
+    "openai": "^7.2.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-markdown": "^9.0.3",
+    "undici": "^7.29.1",
+    "uuid": "^11.0.4",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.4",
+    "postcss": "^8",
+    "tailwindcss": "^3.4.1",
+    "typescript": "^5",
+    "vitest": "^5.0.0"
+  }
+}

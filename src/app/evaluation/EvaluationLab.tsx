@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { cabinApiUrl } from "../lib/apiBase";
 
 type VehicleState = {
   speed: number;
@@ -148,7 +149,7 @@ export default function EvaluationLab() {
       const test = cases[index];
       const started = performance.now();
       try {
-        const sessionResponse = await fetch("/api/cabin/session", {
+        const sessionResponse = await fetch(cabinApiUrl("/api/cabin/session"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ scenario: test.scenario || "default" }),
@@ -159,7 +160,7 @@ export default function EvaluationLab() {
         }
         let response: Response | null = null;
         for (let attempt = 1; attempt <= 2; attempt += 1) {
-          response = await fetch("/api/deepseek/agent", {
+          response = await fetch(cabinApiUrl("/api/deepseek/agent"), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ text: test.input, sessionId: sessionData.sessionId, history: [] }),

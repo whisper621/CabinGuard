@@ -9,7 +9,9 @@
 [![CI](https://github.com/whisper621/CabinGuard/actions/workflows/ci.yml/badge.svg)](https://github.com/whisper621/CabinGuard/actions/workflows/ci.yml)
 ![Next.js](https://img.shields.io/badge/Next.js-16.3-000000?logo=nextdotjs)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)
-![Tests](https://img.shields.io/badge/Vitest-35%20tests-6E9F18?logo=vitest&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-Agent%20API-009688?logo=fastapi&logoColor=white)
+![Tests](https://img.shields.io/badge/Tests-86%20passed-6E9F18)
 ![License](https://img.shields.io/badge/License-MIT-blue.svg)
 
 **[产品演示](#五分钟演示路径) · [Agent Lab](#五个产品入口) · [评测体系](#量化验证) · [案例页](#五个产品入口) · [项目文档](#项目文档)**
@@ -28,12 +30,22 @@ CabinGuard 解决的不是“车载助手能否聊天”，而是“它能否在
 | --- | --- |
 | 产品场景 | 空调舒适度、天窗、补能搜索与导航、后备箱、车辆状态 |
 | Agent 能力 | 自然语言理解、多轮 Tool Calling、澄清、风险确认、失败回退 |
-| 可信机制 | 服务端状态源、Zod 严格校验、动作前置、显式授权、结果依据校验 |
+| 可信机制 | Python 服务端状态源、Pydantic 严格校验、动作前置、显式授权、结果依据校验 |
 | 可观测性 | 工具名称、参数、输出、执行状态、模型轮次、Token 与延迟 |
-| 评测资产 | 10 类模型行为用例、35 条确定性测试、GitHub Actions 质量门禁 |
+| 评测资产 | 10 类模型行为用例、51 条 Python 测试、35 条 TypeScript 兼容测试、GitHub Actions 质量门禁 |
 | 作品集资产 | 交互 MVP、Agent Lab、评测台、案例页、PRD、架构与决策记录 |
 
 > 项目定位：单 Agent、多工具、服务端硬约束的智能座舱任务系统。当前使用车辆与环境模拟数据验证产品策略，不连接真实车辆控制器。
+
+## 语言与代码边界
+
+CabinGuard 现在采用产品型 Agent 常见的前后端分工，而不是为了“全 Python”牺牲交互体验：
+
+- **Python 是 Agent 主后端：** FastAPI 接口、多轮模型编排、Pydantic 工具 Schema、服务端会话、安全策略和 51 条测试均在 `backend/`。
+- **TypeScript/TSX 是产品界面：** Next.js、React 页面、Agent Trace、评测台和浏览器语音交互在 `src/app/`。
+- **TypeScript 后端是兼容回退：** 未启动 Python API 时，界面仍可通过 Next.js Route Handlers 演示；正式讲述应以 Python Agent 主链路为核心。
+
+因此可以准确表述为“Python/FastAPI Agent 后端 + Next.js 产品前端”，不应表述为“整个仓库只有 Python”。
 
 ## 为什么做 CabinGuard
 
@@ -54,7 +66,7 @@ CabinGuard 将任务拆为一条可检查的闭环：
 
 ### 1. 模型是规划者，不是动作权限拥有者
 
-模型可以决定“下一步应该调用什么工具”，但不能直接修改车辆状态。所有写操作统一进入服务端工具执行器，由应用层完成参数、前置状态、风险和授权校验。
+模型可以决定“下一步应该调用什么工具”，但不能直接修改车辆状态。所有写操作统一进入 Python/FastAPI 服务端工具执行器，由应用层完成参数、前置状态、风险和授权校验；原有 Next.js API 保留为兼容回退链路。
 
 ### 2. 风险策略同时存在于软、硬两层
 
@@ -87,10 +99,10 @@ CabinGuard 将任务拆为一条可检查的闭环：
 ```mermaid
 flowchart LR
     U[用户文本 / 语音] --> UI[产品交互层]
-    UI --> S[服务端会话]
+    UI --> S[Python FastAPI 会话层]
     S --> LLM[DeepSeek 规划层]
-    LLM -->|tool_calls| EX[可信工具执行器]
-    EX --> V[Zod 参数校验]
+    LLM -->|tool_calls| EX[Python 可信工具执行器]
+    EX --> V[Pydantic 参数校验]
     V --> P[状态前置与授权检查]
     P --> G[安全规则]
     G --> SIM[车辆 / 天气 / 地图模拟器]
@@ -99,7 +111,7 @@ flowchart LR
     LLM --> R[依据校验后的回复]
     R --> UI
 
-    T[Vitest + 行为评测] -.验证.-> EX
+    T[Pytest + Vitest + 行为评测] -.验证.-> EX
     T -.验证.-> R
 ```
 
@@ -141,10 +153,11 @@ flowchart LR
 
 | 验证层 | 当前结果 | 说明 |
 | --- | --- | --- |
-| 确定性安全测试 | **35 / 35 通过** | 确认语义、TTL、限流、参数、前置、安全拦截、导航授权、结果依据 |
+| Python Agent 测试 | **51 / 51 通过** | 多轮编排、FastAPI、Pydantic 工具、确认语义、TTL、限流、安全拦截、导航授权与结果依据 |
+| TypeScript 兼容测试 | **35 / 35 通过** | 验证内置回退链路与 Python 可信语义保持一致 |
 | 模型行为评测 | **10 类用例** | 覆盖任务完成、澄清、越权、风险与能力边界，可从页面真实运行 |
 | 最近完整模型批次 | **9 / 10** | 一次失败来自网络 TLS 瞬断；行为修复与失败用例均已定向复测通过 |
-| 本地质量门禁 | **通过** | ESLint、TypeScript、Vitest、Next.js 生产构建 |
+| 本地质量门禁 | **通过** | Ruff、Pytest、ESLint、TypeScript、Vitest、Next.js 生产构建 |
 | 依赖安全检查 | **0 个已知漏洞** | `npm audit --omit=dev` |
 
 为避免把模型随机性、网络波动和付费 API 变成每次提交的合并门槛，CI 默认只运行确定性质量门禁；真实模型回归由评测页触发并单独留档。完整记录见 [评测报告](docs/EVALUATION_REPORT.md)。
@@ -163,34 +176,63 @@ flowchart LR
 
 ### 环境要求
 
+- Python 3.11+
 - Node.js 20+
 - npm 10+
 - 可选：DeepSeek API Key、OpenAI API Key
 
-### 1. 安装并启动
-
-```bash
-git clone https://github.com/whisper621/CabinGuard.git
-cd CabinGuard
-npm ci
-npm run dev
-```
-
-访问 [http://localhost:3000](http://localhost:3000)。不配置密钥也可以体验首页的完整本地演示链路。
-
-### 2. 启用 DeepSeek Agent Lab
+### 1. 安装 Python Agent
 
 PowerShell：
+
+```powershell
+git clone https://github.com/whisper621/CabinGuard.git
+cd CabinGuard
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -e ".[dev]"
+```
+
+macOS / Linux 激活命令为 `source .venv/bin/activate`。
+
+无需模型密钥即可验证 Python 工具闭环：
+
+```bash
+python -m cabinguard demo
+```
+
+### 2. 启动 FastAPI
+
+```bash
+python -m cabinguard
+```
+
+访问 [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs) 查看并直接调用 OpenAPI 接口。健康检查位于 `GET /api/health`。
+
+### 3. 连接产品界面
+
+复制环境变量文件并启用 Python API 地址：
 
 ```powershell
 Copy-Item .env.sample .env.local
 ```
 
-macOS / Linux：
+在 `.env.local` 中取消以下配置的注释：
+
+```dotenv
+NEXT_PUBLIC_CABINGUARD_API_URL=http://127.0.0.1:8000
+```
+
+另开终端启动界面：
 
 ```bash
-cp .env.sample .env.local
+npm ci
+npm run dev
 ```
+
+访问 [http://localhost:3000](http://localhost:3000)。Agent Lab、评测页和首页意图解析会直接调用 Python 后端；未配置该地址时自动使用仓库内置的 Next.js 兼容 API。
+
+### 4. 启用 DeepSeek Tool Calling
 
 在 `.env.local` 中填写：
 
@@ -199,9 +241,15 @@ DEEPSEEK_API_KEY=your_deepseek_api_key
 DEEPSEEK_MODEL=deepseek-v4-flash
 ```
 
-重启开发服务后访问 [http://localhost:3000/agent-lab](http://localhost:3000/agent-lab)。
+可以在终端直接运行 Agent：
 
-### 3. 运行质量门禁
+```bash
+python -m cabinguard chat --scenario default
+```
+
+也可以重启两个服务后访问 [http://localhost:3000/agent-lab](http://localhost:3000/agent-lab)。
+
+### 5. 运行质量门禁
 
 ```bash
 npm run check
@@ -210,7 +258,7 @@ npm run check
 该命令依次运行：
 
 ```text
-ESLint → TypeScript → 35 条 Vitest → Next.js 生产构建
+ESLint → TypeScript → 35 条 Vitest → Ruff → 51 条 Pytest → Next.js 生产构建
 ```
 
 常用单项命令：
@@ -219,6 +267,8 @@ ESLint → TypeScript → 35 条 Vitest → Next.js 生产构建
 npm run lint
 npm run typecheck
 npm run test:run
+npm run python:lint
+npm run python:test
 npm run build
 ```
 
@@ -226,6 +276,16 @@ npm run build
 
 ```text
 CabinGuard/
+├─ backend/
+│  ├─ cabinguard/
+│  │  ├─ api.py                     # FastAPI 与 OpenAPI 入口
+│  │  ├─ agent.py                   # DeepSeek 多轮 Tool Calling 主循环
+│  │  ├─ tools.py                   # 8 个 Pydantic 工具与可信执行器
+│  │  ├─ policy.py                  # 确认、导航授权与结果依据策略
+│  │  ├─ session.py                 # 会话、TTL、限流与一次性确认
+│  │  └─ cli.py                     # serve / demo / chat 命令行入口
+│  └─ tests/                        # 51 条 Python Agent、工具与 API 测试
+├─ pyproject.toml                   # Python 包、依赖和 cabinguard 命令
 ├─ src/app/
 │  ├─ CabinDemo.tsx                 # 稳定产品演示与本地回退
 │  ├─ agent-lab/                    # DeepSeek 多轮 Tool Calling 实验台
@@ -237,10 +297,11 @@ CabinGuard/
 │  │  ├─ deepseek/agent/            # Agent 编排、超时与结果返回
 │  │  └─ deepseek/interpret/        # 结构化意图解析
 │  └─ lib/
-│     ├─ cabinTools.ts              # 工具 Schema、前置与安全执行器
+│     ├─ apiBase.ts                 # Python API / Next.js API 运行时切换
+│     ├─ cabinTools.ts              # TypeScript 兼容工具执行器
 │     ├─ cabinPolicy.ts             # 确认、授权与结果依据策略
 │     ├─ cabinSession.ts            # 会话、待确认动作、TTL 与限流
-│     └─ __tests__/                 # 35 条确定性安全测试
+│     └─ __tests__/                 # 35 条 TypeScript 兼容测试
 ├─ docs/                            # PRD、架构、评测、决策与作品集说明
 ├─ documentation/                   # 工程交付所需的流程、变量、权限和测试地图
 └─ .github/workflows/ci.yml         # 自动质量门禁

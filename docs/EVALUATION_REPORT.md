@@ -37,7 +37,14 @@
 
 为避免把模型随机性和 API 网络状态混入每次代码提交，项目新增独立的确定性测试层：
 
+- 51 条 Pytest 覆盖 Python 多轮编排、FastAPI API 形状、Pydantic 严格参数、会话状态、确认语义、工具前置、安全拦截、导航授权和结果依据。
 - 35 条 Vitest 用例覆盖会话场景、确认 TTL、一次性消费、限流、明确确认/取消优先、工具参数拒绝、读取前置、降雨与行驶拦截、导航授权和结果依据。
-- GitHub Actions 在无供应商密钥的环境中执行 lint、typecheck、unit tests 和生产构建。
+- GitHub Actions 在无供应商密钥的环境中执行 Ruff、Pytest、ESLint、typecheck、Vitest 和生产构建。
 - `npm run check` 已在本地完整通过；Next.js 已升级至 16.3.4，当前 `npm audit` 为 0 个已知漏洞。
 - 10 类 DeepSeek 行为评测没有在本次确定性重构后冒充重新运行结果；下一次有意调用付费模型时，应从 `/evaluation` 运行并保存新的 JSON 报告。
+
+## Python 主链路验证
+
+2026-09-12 完成 Python/FastAPI Agent 后端升级后，使用已配置的 DeepSeek 运行一条主链路请求“把空调调到23度并切换外循环”。模型返回标识为 `deepseek-flash`，3 个模型轮次依次产生 `get_climate_state → set_climate`，最终服务端状态为 23℃、2 档、外循环，工具结果与回复一致。
+
+该记录只证明 Python 多轮编排、参数校验、状态写回和结果反馈链路已真实贯通，不替代 10 类行为集的下一轮完整重复评测。

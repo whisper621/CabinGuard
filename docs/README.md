@@ -17,6 +17,7 @@
 | [系统架构](ARCHITECTURE.md) | 组件、数据流、信任边界、异常处理与生产化方向 | 研发、AI 产品经理 |
 | [技术报告](TECHNICAL_REPORT.md) | 三条运行链路、工具系统、复核证据和技术边界 | 技术面试官、研发 |
 | [工程交付地图](../documentation/architecture.md) | 代码入口、流程、权限、变量、自动化和测试覆盖 | 接手项目的研发 |
+| [CAR-Bench 对比](CAR_BENCH_COMPARISON.md) | Python 技术栈、项目定位差异与可借鉴的评测方向 | AI 产品、技术面试官 |
 
 ## 评测与证据
 
@@ -44,8 +45,9 @@
 
 1. [技术报告](TECHNICAL_REPORT.md) 的运行链路。
 2. [工程交付地图](../documentation/architecture.md)。
-3. `src/app/lib/cabinTools.ts`、`cabinPolicy.ts`、`cabinSession.ts`。
-4. `npm run check` 验证本地环境。
+3. Python 主后端：`backend/cabinguard/agent.py`、`tools.py`、`policy.py`、`session.py`。
+4. TypeScript 产品层：`src/app/`；兼容后端：`src/app/lib/` 与 `src/app/api/`。
+5. `python -m pytest` 与 `npm run check` 验证本地环境。
 
 ## 文档维护规则
 

@@ -10,6 +10,14 @@
 
 # testing
 /coverage
+/.pytest_cache/
+
+# python
+/.venv/
+/dist/
+/backend/**/*.egg-info/
+**/__pycache__/
+*.py[cod]
 
 # next.js
 /.next/

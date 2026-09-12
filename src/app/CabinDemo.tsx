@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useMemo, useRef, useState } from "react";
+import { cabinApiUrl } from "./lib/apiBase";
 import { classifyConfirmation, isNavigationRequested } from "./lib/cabinPolicy";
 
 type Role = "assistant" | "user" | "system";
@@ -191,7 +192,7 @@ export default function CabinDemo() {
     if (aiStatus === "fallback") return null;
     setAiStatus("checking");
     try {
-      const response = await fetch("/api/deepseek/interpret", {
+      const response = await fetch(cabinApiUrl("/api/deepseek/interpret"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text }),

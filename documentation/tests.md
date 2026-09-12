@@ -13,9 +13,10 @@
 | 补能绕行筛选 | 最大绕行参数影响候选结果 | 自动单元 | `cabinTools.test.ts` | existing / CI required |
 | 导航授权和候选绑定 | 未明确要求或目的地非本轮候选时拒绝 | 自动单元 | `cabinTools.test.ts` | existing / CI required |
 | 会话场景、确认 TTL、一次性消费和限流 | 过期/重复确认不得执行，第 31 次窗口请求被拒绝 | 自动单元 | `cabinSession.test.ts` | existing / CI required |
+| Python 多轮编排、API、Pydantic 工具、会话与安全策略 | Python Agent 主后端与 TypeScript 兼容语义一致 | 自动单元/API | `backend/tests/`（51 条） | existing / CI required |
 | 10 类模型行为 | 有序关键工具链、状态、拦截、澄清、能力边界 | guarded live | `/evaluation` | existing / manual, costs API |
 
-CI 依次运行 ESLint、TypeScript、确定性单元测试和生产构建；不要求任何供应商密钥。
+CI 依次运行 Ruff、51 条 Pytest、ESLint、TypeScript、35 条 Vitest 和生产构建；不要求任何供应商密钥。
 
 ## Proposed tests
 

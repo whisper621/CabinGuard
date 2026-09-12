@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
+import { cabinApiUrl } from "../lib/apiBase";
 
 type VehicleState = {
   speed: number;
@@ -97,7 +98,7 @@ export default function AgentLab() {
   const [meta, setMeta] = useState({ model: "等待调用", turns: 0, tokens: 0, latency: 0, promptVersion: "—", toolVersion: "—" });
 
   const createSession = async (nextScenario: CabinScenario) => {
-    const response = await fetch("/api/cabin/session", {
+    const response = await fetch(cabinApiUrl("/api/cabin/session"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ scenario: nextScenario }),
@@ -129,7 +130,7 @@ export default function AgentLab() {
     try {
       let response: Response | null = null;
       for (let attempt = 1; attempt <= 2; attempt += 1) {
-        response = await fetch("/api/deepseek/agent", {
+        response = await fetch(cabinApiUrl("/api/deepseek/agent"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ text, sessionId, history }),

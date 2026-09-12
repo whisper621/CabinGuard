@@ -18,6 +18,10 @@ Copyright (c) 2025 OpenAI
 
 运行时与开发依赖分别在 `package.json` 和 `package-lock.json` 中锁定，包括 Next.js、React、TypeScript、Zod、Vitest、OpenAI Agents SDK、OpenAI Node SDK 与 Undici 等。每个依赖继续适用其自身许可证；发布或再分发前应按锁文件版本复核许可证清单。
 
+## Python 依赖
+
+Python Agent 后端的直接依赖声明在 `pyproject.toml`，包括 FastAPI、Pydantic、HTTPX、Uvicorn、python-dotenv 与 Pytest。安装时生成的间接依赖继续适用其各自许可证；部署或再分发时应按实际锁定版本复核许可证与安全公告。
+
 ## 产品内容边界
 
 CabinGuard 的智能座舱场景、产品策略、DeepSeek 多轮工具编排、服务端安全执行器、会话确认机制、可视化评测、确定性测试和配套产品文档属于本仓库的核心产品实现。第三方组件不代表对本项目的背书。

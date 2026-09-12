@@ -33,8 +33,9 @@ CabinGuard 围绕可信智能座舱任务闭环完成了以下核心产品实现
 | --- | --- |
 | 前端 | Next.js 16 App Router、React 19、TypeScript、Tailwind CSS，承载主页、Agent Lab 和评测页 |
 | 模型服务 | DeepSeek Chat Completions 的结构化意图解析与函数调用；可选 OpenAI Realtime API 语音会话 |
+| Python Agent 后端 | Python 3.11+、FastAPI、Pydantic、HTTPX，承载多轮编排、会话、限流、工具执行和 OpenAPI |
 | Agent 框架 | `@openai/agents` 的 RealtimeAgent 与工具定义，用于可选 Realtime 语音模式 |
-| 服务端通信 | Next.js Route Handlers、Undici；DeepSeek 密钥只在服务端读取 |
+| 兼容服务端 | Next.js Route Handlers、Zod、Undici；未连接 Python API 时提供单服务回退 |
 | 运行状态 | 主页使用 React 内存状态；Agent Lab 使用 30 分钟有效的服务端内存会话；当前没有数据库、Redis 或持久化日志 |
 | 语音能力 | 浏览器 Speech Recognition 做中文语音输入，Speech Synthesis 做结果播报；Realtime 语音是独立可选入口 |
 
@@ -56,20 +57,20 @@ CabinGuard 围绕可信智能座舱任务闭环完成了以下核心产品实现
 
 ### 4.2 Agent Lab：DeepSeek 多轮 Tool Calling 链路
 
-`/agent-lab` 是项目最能说明 Agent 能力的入口。浏览器先向 `/api/cabin/session` 创建服务端演示会话，后续只提交会话 ID、用户请求及最近 10 条对话历史。服务端把系统提示词、8 个函数 Schema 和用户消息发送给 DeepSeek；模型自主选择函数，服务端从会话读取状态、执行函数并写回会话，再把结果作为 `tool` 消息回传模型。
+`/agent-lab` 是项目最能说明 Agent 能力的入口。浏览器先向 Python/FastAPI 的 `/api/cabin/session` 创建服务端演示会话，后续只提交会话 ID、用户请求及最近 10 条对话历史。服务端把系统提示词、8 个函数 Schema 和用户消息发送给 DeepSeek；模型自主选择函数，Python 服务端从会话读取状态、执行函数并写回会话，再把结果作为 `tool` 消息回传模型。
 
 ```text
 浏览器
   │ 文本、有限会话历史、会话 ID
   ▼
-Next.js /api/cabin/session → /api/deepseek/agent
+Python FastAPI /api/cabin/session → /api/deepseek/agent
   │ 系统提示词 + 8 个函数 Schema
   ▼
 DeepSeek 模型
   │ tool_calls
   ▼
 服务端工具执行器
-  │ Zod 校验参数、执行前置与安全规则、更新模拟状态、生成 Trace
+  │ Pydantic 校验参数、执行前置与安全规则、更新模拟状态、生成 Trace
   └──────── 工具结果回传 DeepSeek ────────┘
   ▼
 最终回复 + 最新状态 + 调用轨迹 + 模型轮次/Token/延迟
@@ -91,7 +92,7 @@ DeepSeek 模型
 
 ## 5. Agent 的工具系统
 
-核心产品是 1 个 `cabinPilotAgent`。它能够调用以下 8 个工具：
+核心产品是 1 个任务 Agent。Python 主实现位于 `backend/cabinguard/agent.py`，可选实时语音配置为 `cabinPilotAgent`。它能够调用以下 8 个工具：
 
 | 工具 | 输入 | 返回/状态改变 | 业务目的与约束 |
 | --- | --- | --- | --- |
@@ -122,7 +123,7 @@ DeepSeek 模型
 
 ### 已实现的硬约束：服务端工具执行器
 
-- 所有工具参数使用 Zod 严格校验，非法类型、范围、枚举和多余字段不会被静默纠正为成功；
+- Python 主后端使用 Pydantic 严格校验所有工具参数，Next.js 兼容后端使用 Zod；非法类型、范围、枚举和多余字段不会被静默纠正为成功；
 - `set_climate`、`search_charging_stations`、`control_sunroof` 和后备箱开启分别强制校验所需的状态读取前置；
 - `control_sunroof` 在降雨概率不低于 50% 时拒绝打开；在车速不低于 80 km/h 且 `confirmed !== true` 时拒绝打开；
 - `control_trunk` 在车速大于 0 时拒绝打开；
@@ -161,6 +162,9 @@ DeepSeek 模型
 
 | 验证项 | 结果 | 说明 |
 | --- | --- | --- |
+| `python -m pytest` | 通过 | 51 条 Python 测试覆盖多轮编排、FastAPI、Pydantic 工具、会话、策略和确认恢复 |
+| `python -m cabinguard demo` | 通过 | 不依赖模型密钥完成 Python 工具读取与写入闭环 |
+| Python FastAPI 冒烟测试 | HTTP 200 | `/api/health` 返回 `runtime=python`，可创建降雨场景会话 |
 | `npm run build` | 通过 | Next.js 编译、类型检查、静态页生成均通过 |
 | `npm run test:run` | 通过 | 35 条确定性测试覆盖会话 TTL、限流、确认语义、工具参数、读取前置、安全拦截和导航授权 |
 | `npm run lint` / `npm run typecheck` | 通过 | ESLint 与 TypeScript 纳入统一质量门禁 |
@@ -185,7 +189,7 @@ DeepSeek 模型
 2. **只有演示级限流，没有身份认证。** 当前 DeepSeek Agent 路由按来源提供内存窗口限流，但没有用户身份、配额、持久化预算或分布式限流，公开部署仍有 API 成本和滥用风险。
 3. **没有持久化。** 会话、状态和 Trace 不写入数据库，刷新后会丢失；评测报告仅下载到本地。
 4. **Realtime 尚未启用验证。** 当前只有 DeepSeek 主链路可实际演示。
-5. **模型行为评测尚未成为自动门禁。** 确定性规则已有 35 条 Vitest 测试与 CI；10 类模型行为仍需从页面运行并人工保存报告。
+5. **模型行为评测尚未成为自动门禁。** 确定性规则已有 51 条 Pytest 与 35 条 Vitest 测试；10 类模型行为仍需从页面运行并人工保存报告。
 6. **跨链路参数不完全一致。** DeepSeek 空调风量为 1–5 档，Realtime 为 1–7 档；高速确认字段分别为 `confirmed` 与 `high_speed_confirmed`。后续接入真实后端前应统一契约。
 7. **确认状态仍不是生产级授权。** 高速天窗确认已绑定会话、动作参数和 2 分钟有效期；生产环境仍应绑定任务 ID、车端签名、用户身份和审计记录。
 8. **文案仍有语义歧义。** 天窗成功路径返回 `sunshade_percent: 100`，但模型曾描述为“遮阳帘保持全闭”；应在产品定义中统一百分比代表“开度”还是“闭合度”，并由前端模板化结果避免模型自行表述。
@@ -195,7 +199,7 @@ DeepSeek 模型
 
 ### 可写的项目描述
 
-> 设计并实现 CabinGuard 可信座舱任务 Agent，完成车况、天气、空调、补能导航和车控等 8 个领域工具，构建“意图理解—服务端状态读取—安全校验—工具执行—结果核验”的任务闭环；接入 DeepSeek 多轮 Tool Calling，服务端实现会话级高速天窗确认、降雨阻止、行驶中后备箱拦截与补能前置状态检查，并搭建含 10 条用例的可视化回归评测台。
+> 设计并实现 CabinGuard 可信座舱任务 Agent，使用 Python、FastAPI 与 Pydantic 完成多轮编排、会话和 8 个领域工具，构建“意图理解—服务端状态读取—安全校验—工具执行—结果核验”的任务闭环；接入 DeepSeek Tool Calling，实现会话级高速天窗确认、降雨阻止、行驶中后备箱拦截与补能前置状态检查，并以 Next.js 搭建可视化 Agent Lab 和 10 类回归评测台。
 
 ### 可量化表述
 

@@ -13,7 +13,10 @@
     "tool-calling",
     "intelligent-cockpit",
     "deepseek",
-    "nextjs"
+    "nextjs",
+    "python",
+    "fastapi",
+    "pydantic"
   ],
   "scripts": {
     "dev": "next dev",
@@ -23,7 +26,12 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest",
     "test:run": "vitest run",
-    "check": "npm run lint && npm run typecheck && npm run test:run && npm run build"
+    "python:install": "python -m pip install -e .[dev]",
+    "python:serve": "python -m cabinguard",
+    "python:demo": "python -m cabinguard demo",
+    "python:lint": "python -m ruff check backend",
+    "python:test": "python -m pytest",
+    "check": "npm run lint && npm run typecheck && npm run test:run && npm run python:lint && npm run python:test && npm run build"
   },
   "dependencies": {
     "@openai/agents": "^0.17.2",

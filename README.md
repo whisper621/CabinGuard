@@ -176,6 +176,22 @@ flowchart LR
 
 ## 快速开始
 
+### Windows 一键演示（推荐）
+
+首次完成下方依赖安装和 `.env.local` 配置后，可以直接在 PyCharm / VS Code 中运行根目录的 `start_demo.py`。也可以双击 `start-demo.cmd`，或在终端运行：
+
+```powershell
+npm run demo:start
+```
+
+在 Python IDE 中运行时，解释器选择 `.venv\Scripts\python.exe`，工作目录选择仓库根目录，然后直接运行 `start_demo.py`，不需要给它填写额外参数。
+
+启动器会检查 Python/Node 环境，依次启动 FastAPI 与 Next.js，等待两个健康检查通过，并自动打开 Agent Lab；运行日志直接显示在 Python IDE 控制台，进程记录写入本地 `.runtime/` 且不会提交到 Git。按 `Ctrl+C` 或点击 IDE 的停止按钮即可关闭；也可以运行：
+
+```powershell
+npm run demo:stop
+```
+
 ### 环境要求
 
 - Python 3.11+

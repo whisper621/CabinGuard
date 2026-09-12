@@ -45,7 +45,7 @@ CabinGuard 没有把整个仓库机械重写成 Python。浏览器界面继续�
 - 导航显式授权、工具读取前置和执行结果依据校验；
 - 15 个 Base / Hallucination / Disambiguation 任务的共享 JSON Schema；
 - Python 多轮运行器、五维确定性评分器、Pass^k / Pass@k 聚合与版本化报告；
-- 60 条 Python Agent、工具、策略、会话、API 与评测测试。
+- 63 条 Python Agent、工具、策略、会话、API 与评测测试。
 
 这使项目可以准确表述为“Python Agent 后端 + Next.js 产品前端”，也能直接通过 `python -m cabinguard` 运行，而不需要伪装成全 Python 仓库。
 

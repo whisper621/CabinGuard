@@ -8,6 +8,13 @@ Scenario = Literal["default", "rain", "moving"]
 ToolStatus = Literal["success", "blocked"]
 
 
+class GeoPoint(BaseModel):
+    """A WGS84 point used by the navigation sandbox."""
+
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+
+
 class VehicleState(BaseModel):
     """Trusted server-side state for the simulated vehicle."""
 
@@ -24,7 +31,19 @@ class VehicleState(BaseModel):
     sunshade: int = 0
     weather: str = "多云"
     rain_probability: float = Field(20, alias="rainProbability")
+    current_location: str = Field("京承高速模拟起点", alias="currentLocation")
+    latitude: float = Field(40.0415, ge=-90, le=90)
+    longitude: float = Field(116.4836, ge=-180, le=180)
+    location_source: Literal["simulated", "browser_geolocation"] = Field(
+        "simulated", alias="locationSource"
+    )
+    location_accuracy_meters: float | None = Field(
+        None, ge=0, alias="locationAccuracyMeters"
+    )
     destination: str = "未设置"
+    route_distance_km: float | None = Field(None, ge=0, alias="routeDistanceKm")
+    route_eta_minutes: int | None = Field(None, ge=0, alias="routeEtaMinutes")
+    route_polyline: list[GeoPoint] = Field(default_factory=list, alias="routePolyline")
 
     def public_dict(self) -> dict[str, object]:
         return self.model_dump(by_alias=True)

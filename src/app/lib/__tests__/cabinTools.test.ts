@@ -14,7 +14,15 @@ const vehicleFixture = (): CabinVehicleState => ({
   sunshade: 0,
   weather: "多云",
   rainProbability: 20,
+  currentLocation: "京承高速模拟起点",
+  latitude: 40.0415,
+  longitude: 116.4836,
+  locationSource: "simulated",
+  locationAccuracyMeters: null,
   destination: "未设置",
+  routeDistanceKm: null,
+  routeEtaMinutes: null,
+  routePolyline: [],
 });
 
 describe("executeCabinTool", () => {
@@ -54,6 +62,19 @@ describe("executeCabinTool", () => {
     }, vehicle, { priorSuccessfulTools: ["get_climate_state"] });
     expect(result.status).toBe("success");
     expect(result.vehicle).toMatchObject({ targetTemperature: 23, fanLevel: 3, circulation: "外循环" });
+  });
+
+  it("does not expose precise local coordinates in model tool output", () => {
+    vehicle.locationSource = "browser_geolocation";
+    vehicle.currentLocation = "浏览器授权位置";
+    vehicle.latitude = 31.2304;
+    vehicle.longitude = 121.4737;
+    const result = executeCabinTool("get_vehicle_state", {}, vehicle);
+    expect(result.output.current_location).toEqual({
+      name: "浏览器授权位置",
+      source: "browser_geolocation",
+      coordinate_available: true,
+    });
   });
 
   it("requires both state and weather reads before opening the sunroof", () => {
@@ -112,6 +133,14 @@ describe("executeCabinTool", () => {
     }, vehicle, { priorSuccessfulTools: ["get_vehicle_state"] });
     expect(result.status).toBe("success");
     expect(result.output.stations).toHaveLength(1);
+    expect(result.output.stations).toEqual([
+      expect.objectContaining({
+        name: "顺义服务区超充站",
+        latitude: expect.any(Number),
+        longitude: expect.any(Number),
+        data_source: "CabinGuard demo catalog",
+      }),
+    ]);
   });
 
   it("blocks navigation that the user did not authorize", () => {
@@ -147,5 +176,24 @@ describe("executeCabinTool", () => {
     });
     expect(result.status).toBe("success");
     expect(result.vehicle.destination).toBe("顺义服务区超充站");
+    expect(result.vehicle.routeDistanceKm).toBe(18.6);
+    expect(result.vehicle.routeEtaMinutes).toBeGreaterThan(0);
+    expect(result.vehicle.routePolyline).toHaveLength(3);
+    expect(result.output.route_provider).toBe("CabinGuard navigation sandbox");
+  });
+
+  it("uses a browser-authorized coordinate when estimating route distance", () => {
+    vehicle.locationSource = "browser_geolocation";
+    vehicle.latitude = 40.1;
+    vehicle.longitude = 116.55;
+    const result = executeCabinTool("start_navigation", {
+      destination: "顺义服务区超充站",
+    }, vehicle, {
+      navigationAuthorized: true,
+      priorSuccessfulTools: ["search_charging_stations"],
+      allowedNavigationDestinations: ["顺义服务区超充站"],
+    });
+    expect(result.status).toBe("success");
+    expect(result.vehicle.routeDistanceKm).not.toBe(18.6);
   });
 });

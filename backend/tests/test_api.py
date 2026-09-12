@@ -21,6 +21,36 @@ def test_creates_rain_session_with_frontend_shape() -> None:
     assert payload["sessionId"]
     assert payload["vehicle"]["rainProbability"] == 70
     assert payload["vehicle"]["cabinTemperature"] == 26.5
+    assert payload["vehicle"]["locationSource"] == "simulated"
+
+
+def test_creates_session_with_browser_location() -> None:
+    response = client.post(
+        "/api/cabin/session",
+        json={
+            "scenario": "default",
+            "location": {
+                "latitude": 31.2304,
+                "longitude": 121.4737,
+                "accuracyMeters": 18,
+            },
+        },
+    )
+    assert response.status_code == 200
+    vehicle = response.json()["vehicle"]
+    assert vehicle["locationSource"] == "browser_geolocation"
+    assert vehicle["currentLocation"] == "浏览器授权位置"
+    assert vehicle["latitude"] == 31.2304
+    assert vehicle["locationAccuracyMeters"] == 18
+
+
+def test_rejects_invalid_browser_location() -> None:
+    response = client.post(
+        "/api/cabin/session",
+        json={"location": {"latitude": 120, "longitude": 121}},
+    )
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "invalid_request"
 
 
 def test_rejects_invalid_scenario() -> None:

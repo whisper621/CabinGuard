@@ -2,13 +2,35 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
+from math import asin, cos, radians, sin, sqrt
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from .models import ToolExecution, VehicleState
+from .models import GeoPoint, ToolExecution, VehicleState
 
-TOOL_VERSION = "3.0.0-python"
+TOOL_VERSION = "3.1.0-python"
+
+CHARGING_STATIONS: tuple[dict[str, object], ...] = (
+    {
+        "name": "顺义服务区超充站",
+        "latitude": 40.1672,
+        "longitude": 116.6371,
+        "distance_km": 18.6,
+        "detour_km": 1.8,
+        "available_fast_chargers": 6,
+        "battery_drop_percent": 7,
+    },
+    {
+        "name": "怀柔北综合能源站",
+        "latitude": 40.3584,
+        "longitude": 116.6318,
+        "distance_km": 24.1,
+        "detour_km": 4.6,
+        "available_fast_chargers": 3,
+        "battery_drop_percent": 10,
+    },
+)
 
 
 class StrictToolInput(BaseModel):
@@ -108,6 +130,50 @@ def _has_prior(context: ToolContext, tool_name: str) -> bool:
     return tool_name in context.prior_successful_tools
 
 
+def _haversine_km(
+    latitude_a: float,
+    longitude_a: float,
+    latitude_b: float,
+    longitude_b: float,
+) -> float:
+    """Return great-circle distance for browser-position route estimates."""
+
+    earth_radius_km = 6371.0
+    lat_delta = radians(latitude_b - latitude_a)
+    lon_delta = radians(longitude_b - longitude_a)
+    haversine = sin(lat_delta / 2) ** 2 + (
+        cos(radians(latitude_a))
+        * cos(radians(latitude_b))
+        * sin(lon_delta / 2) ** 2
+    )
+    return 2 * earth_radius_km * asin(sqrt(haversine))
+
+
+def _route_distance(vehicle: VehicleState, station: Mapping[str, object]) -> float:
+    if vehicle.location_source == "browser_geolocation":
+        straight_line = _haversine_km(
+            vehicle.latitude,
+            vehicle.longitude,
+            float(station["latitude"]),
+            float(station["longitude"]),
+        )
+        return round(straight_line * 1.18, 1)
+    return float(station["distance_km"])
+
+
+def _route_polyline(vehicle: VehicleState, station: Mapping[str, object]) -> list[GeoPoint]:
+    destination_latitude = float(station["latitude"])
+    destination_longitude = float(station["longitude"])
+    return [
+        GeoPoint(latitude=vehicle.latitude, longitude=vehicle.longitude),
+        GeoPoint(
+            latitude=round((vehicle.latitude + destination_latitude) / 2 + 0.008, 6),
+            longitude=round((vehicle.longitude + destination_longitude) / 2 - 0.006, 6),
+        ),
+        GeoPoint(latitude=destination_latitude, longitude=destination_longitude),
+    ]
+
+
 def execute_tool(
     name: str,
     raw_input: Mapping[str, Any],
@@ -145,7 +211,19 @@ def execute_tool(
                 "gear": "D" if vehicle.speed > 0 else "P",
                 "battery_percent": vehicle.battery,
                 "estimated_range_km": vehicle.range,
-                "route": "京承高速北向",
+                "current_location": {
+                    "name": vehicle.current_location,
+                    "source": vehicle.location_source,
+                    "coordinate_available": True,
+                },
+                "route": {
+                    "road": "京承高速北向（模拟）",
+                    "destination": vehicle.destination,
+                    "distance_km": vehicle.route_distance_km,
+                    "eta_minutes": vehicle.route_eta_minutes,
+                    "polyline_points": len(vehicle.route_polyline),
+                    "provider": "CabinGuard navigation sandbox",
+                },
                 "destination": vehicle.destination,
             },
         )
@@ -206,25 +284,24 @@ def execute_tool(
                 "补能决策前必须先读取车辆电量、续航和当前路线",
                 retryable=True,
             )
-        stations = [
-            {
-                "name": "顺义服务区超充站",
-                "distance_km": 18.6,
-                "detour_km": 1.8,
-                "available_fast_chargers": 6,
-                "estimated_arrival_battery_percent": max(8, vehicle.battery - 7),
-            },
-            {
-                "name": "怀柔北综合能源站",
-                "distance_km": 24.1,
-                "detour_km": 4.6,
-                "available_fast_chargers": 3,
-                "estimated_arrival_battery_percent": max(8, vehicle.battery - 10),
-            },
-        ]
-        filtered = [
-            station for station in stations if float(station["detour_km"]) <= parsed.max_detour_km
-        ]
+        filtered = []
+        for station in CHARGING_STATIONS:
+            if float(station["detour_km"]) > parsed.max_detour_km:
+                continue
+            filtered.append(
+                {
+                    "name": station["name"],
+                    "latitude": station["latitude"],
+                    "longitude": station["longitude"],
+                    "distance_km": _route_distance(vehicle, station),
+                    "detour_km": station["detour_km"],
+                    "available_fast_chargers": station["available_fast_chargers"],
+                    "estimated_arrival_battery_percent": max(
+                        8, vehicle.battery - float(station["battery_drop_percent"])
+                    ),
+                    "data_source": "CabinGuard demo catalog",
+                }
+            )
         return ToolExecution(
             vehicle=vehicle,
             status="success",
@@ -252,14 +329,40 @@ def execute_tool(
                 "导航目的地不在本轮充电站搜索结果中",
                 code="destination_not_verified",
             )
-        next_vehicle = vehicle.model_copy(update={"destination": destination})
+        station = next(
+            (item for item in CHARGING_STATIONS if item["name"] == destination),
+            None,
+        )
+        if station is None:
+            return _blocked(
+                vehicle,
+                "导航目的地缺少可验证的坐标数据",
+                code="destination_coordinates_unavailable",
+            )
+        route_distance_km = _route_distance(vehicle, station)
+        eta_minutes = max(
+            5,
+            round(route_distance_km / 70 * 60 + float(station["detour_km"]) * 2),
+        )
+        route_points = _route_polyline(vehicle, station)
+        next_vehicle = vehicle.model_copy(
+            update={
+                "destination": destination,
+                "route_distance_km": route_distance_km,
+                "route_eta_minutes": eta_minutes,
+                "route_polyline": route_points,
+            }
+        )
         return ToolExecution(
             vehicle=next_vehicle,
             status="success",
             output={
                 "navigation_started": True,
                 "destination": destination,
-                "eta_minutes": 16,
+                "route_distance_km": route_distance_km,
+                "eta_minutes": eta_minutes,
+                "route_provider": "CabinGuard navigation sandbox",
+                "data_freshness": "demo fixture",
             },
         )
 

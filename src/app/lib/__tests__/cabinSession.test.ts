@@ -3,6 +3,7 @@ import {
   consumeRateLimit,
   createCabinSession,
   createSunroofConfirmation,
+  isBrowserLocation,
   takeSunroofConfirmation,
 } from "../cabinSession";
 
@@ -19,6 +20,26 @@ describe("cabin session state", () => {
     const session = createCabinSession(scenario);
     expect(session.vehicle.speed).toBe(speed);
     expect(session.vehicle.rainProbability).toBe(rainProbability);
+  });
+
+  it("stores an explicitly supplied browser location", () => {
+    const session = createCabinSession("default", {
+      latitude: 31.2304,
+      longitude: 121.4737,
+      accuracyMeters: 18,
+    });
+    expect(session.vehicle).toMatchObject({
+      latitude: 31.2304,
+      longitude: 121.4737,
+      locationSource: "browser_geolocation",
+      locationAccuracyMeters: 18,
+    });
+  });
+
+  it("validates browser location ranges and extra fields", () => {
+    expect(isBrowserLocation({ latitude: 31, longitude: 121 })).toBe(true);
+    expect(isBrowserLocation({ latitude: 91, longitude: 121 })).toBe(false);
+    expect(isBrowserLocation({ latitude: 31, longitude: 121, trusted: true })).toBe(false);
   });
 
   it("consumes a high-speed confirmation only once", () => {

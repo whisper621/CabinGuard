@@ -2,7 +2,7 @@
 
 ## 产品概览
 
-CabinGuard 是智能座舱可信任务 Agent MVP。它用模拟车辆和充电数据验证“理解目标—读取上下文—安全校验—执行工具—核验结果”的闭环，不接入真实车辆、地图或充电平台。
+CabinGuard 是智能座舱可信任务 Agent MVP。它用模拟车辆和充电数据验证“理解目标—读取上下文—安全校验—执行工具—核验结果”的闭环，可接收用户明确授权的浏览器坐标，但不接入真实车辆、道路地图或充电平台。
 
 关键假设：
 
@@ -16,9 +16,10 @@ CabinGuard 是智能座舱可信任务 Agent MVP。它用模拟车辆和充电�
 | 层级 | 实现 | 入口 |
 | --- | --- | --- |
 | 产品 UI | Next.js、React、TypeScript、Tailwind | `/` |
-| Tool Calling 实验台 | DeepSeek Chat Completions | `/agent-lab` |
+| Tool Calling 实验台 | DeepSeek Chat Completions、浏览器语音/定位、路线示意 | `/agent-lab` |
 | Reliability Lab | 页面或 Python CLI 驱动真实 Agent API；Python 五维评分与一致性聚合 | `/evaluation`、`evaluation/cases.json`、`backend/cabinguard/reliability.py` |
-| 可选语音 | OpenAI Realtime Agents | `/realtime` |
+| 核心语音 | Web Speech API 中文识别与播报 | `/agent-lab` |
+| 可选实时语音 | OpenAI Realtime Agents | `/realtime` |
 | Python Agent API | FastAPI、DeepSeek 多轮编排、OpenAPI | `backend/cabinguard/api.py` |
 | 服务端会话 | Python 内存 Store、TTL、限流 | `backend/cabinguard/session.py` |
 | 可信工具边界 | Pydantic 参数校验、领域执行器 | `backend/cabinguard/tools.py` |
@@ -29,6 +30,7 @@ CabinGuard 是智能座舱可信任务 Agent MVP。它用模拟车辆和充电�
 ```text
 浏览器（不可信输入）
   ├─ text/history/sessionId ──> Python FastAPI
+  ├─ 用户授权的浏览器坐标 ──> 新演示会话（标记为不可信来源）
   └─ 不提交车辆状态，不持有供应商长期密钥
                                   │
                                   ├─ DeepSeek（不可信规划）
@@ -54,6 +56,8 @@ CabinGuard 是智能座舱可信任务 Agent MVP。它用模拟车辆和充电�
 | 整条请求重试可能重复副作用 | Agent Lab 和评测客户端 | 当前动作多为绝对赋值；真实接入前必须增加幂等键 |
 | Realtime 与 DeepSeek 尚未共用执行器 | `src/app/agentConfigs/cabinPilot.ts` | 明确标记为后续统一项，不把 Realtime 当生产安全链路 |
 | 来源 IP 限流依赖部署平台转发头 | API route | 仅为演示成本保护，不作为身份认证 |
+| 浏览器坐标不是车载可信位置 | `AgentLab.tsx`、`session.py` | 仅在用户点击授权后接收，记录来源与精度，不用于真实车控，也不写入模型工具上下文 |
+| 充电站与路线不是实时地图数据 | `tools.py` | 输出显式数据源、候选坐标、估算距离、ETA 与路线折线；UI 标为路线示意 |
 
 没有邮件、定时任务或后台作业，因此没有 `emails.md` 或 `cron.md`。项目目前没有公开部署和索引目标，因此不单列 `seo.md`。
 

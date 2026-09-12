@@ -13,7 +13,7 @@
 | `cabinguard/session.py` | 车辆模拟状态、30 分钟会话、2 分钟一次性确认和限流 |
 | `cabinguard/reliability.py` | 共享任务加载、多轮运行、五维确定性评分和 Pass 指标 |
 | `cabinguard/cli.py` | `serve`、`demo`、`chat`、`benchmark` 四个 Python 入口 |
-| `tests/` | 60 条多轮 Agent、确定性工具、API 与评测测试 |
+| `tests/` | 63 条多轮 Agent、确定性工具、API 与评测测试 |
 
 ## 运行
 

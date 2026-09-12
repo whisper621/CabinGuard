@@ -47,7 +47,7 @@ CabinGuard 是一个面向智能座舱的可信任务 Agent MVP：让大模型�
 
 ## 简历项目描述
 
-> **CabinGuard｜可信智能座舱任务 Agent**  使用 Python、FastAPI、Pydantic、Next.js 与 DeepSeek Tool Calling 实现智能座舱任务 MVP，设计车况、天气、空调、天窗、补能搜索、导航和后备箱等 8 个工具，跑通“意图理解—状态读取—安全校验—工具执行—结果核验”闭环。将模型限制在规划层，在 Python 服务端实现严格参数校验、读取前置、高速天窗一次性确认、降雨/行驶风险阻止、导航显式授权与结果溯源；搭建 15 个三类可靠性任务、五维评分与 Pass 一致性指标、60 条 Python 测试、35 条 TypeScript 兼容测试和 CI。
+> **CabinGuard｜可信智能座舱任务 Agent**  使用 Python、FastAPI、Pydantic、Next.js 与 DeepSeek Tool Calling 实现智能座舱任务 MVP，设计车况、天气、空调、天窗、补能搜索、导航和后备箱等 8 个工具，跑通“意图理解—状态读取—安全校验—工具执行—结果核验”闭环。将模型限制在规划层，在 Python 服务端实现严格参数校验、读取前置、高速天窗一次性确认、降雨/行驶风险阻止、导航显式授权与结果溯源；搭建 15 个三类可靠性任务、五维评分与 Pass 一致性指标、63 条 Python 测试、39 条 TypeScript 兼容测试和 CI。
 
 可拆成三条简历要点：
 

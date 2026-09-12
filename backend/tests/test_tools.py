@@ -70,6 +70,8 @@ def test_reads_vehicle_state() -> None:
     assert result.status == "success"
     assert result.output["gear"] == "D"
     assert result.output["battery_percent"] == 38
+    assert result.output["current_location"]["source"] == "simulated"  # type: ignore[index]
+    assert "latitude" not in result.output["current_location"]  # type: ignore[operator]
 
 
 def test_requires_both_reads_before_sunroof() -> None:
@@ -156,6 +158,9 @@ def test_filters_charging_stations_by_detour() -> None:
     )
     assert result.status == "success"
     assert len(result.output["stations"]) == 1  # type: ignore[arg-type]
+    station = result.output["stations"][0]  # type: ignore[index]
+    assert station["latitude"] == 40.1672
+    assert station["data_source"] == "CabinGuard demo catalog"
 
 
 def test_blocks_search_without_vehicle_read() -> None:
@@ -210,3 +215,30 @@ def test_starts_verified_navigation() -> None:
     )
     assert result.status == "success"
     assert result.vehicle.destination == destination
+    assert result.vehicle.route_distance_km == 18.6
+    assert result.vehicle.route_eta_minutes is not None
+    assert len(result.vehicle.route_polyline) == 3
+    assert result.output["route_provider"] == "CabinGuard navigation sandbox"
+
+
+def test_browser_location_changes_route_estimate() -> None:
+    located = vehicle().model_copy(
+        update={
+            "location_source": "browser_geolocation",
+            "latitude": 40.1,
+            "longitude": 116.55,
+        }
+    )
+    destination = "顺义服务区超充站"
+    result = execute_tool(
+        "start_navigation",
+        {"destination": destination},
+        located,
+        ToolContext(
+            navigation_authorized=True,
+            prior_successful_tools=("search_charging_stations",),
+            allowed_navigation_destinations=(destination,),
+        ),
+    )
+    assert result.status == "success"
+    assert result.vehicle.route_distance_km != 18.6

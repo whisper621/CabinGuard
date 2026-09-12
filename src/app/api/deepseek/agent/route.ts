@@ -13,7 +13,7 @@ import { CABIN_TOOL_VERSION, cabinToolDefinitions, executeCabinTool } from "../.
 import { classifyConfirmation, groundAgentMessage, isNavigationRequested } from "../../../lib/cabinPolicy";
 
 export const runtime = "nodejs";
-const AGENT_PROMPT_VERSION = "2.0.0";
+const AGENT_PROMPT_VERSION = "3.2.0-next";
 
 type ToolCall = {
   id: string;
@@ -62,7 +62,8 @@ const systemPrompt = `你是 CabinGuard，一名可信的智能座舱任务 Agen
 5. “舒服一点”等缺少关键偏好的表达应先追问；明确温度或循环模式时可以执行。
 6. 找到充电站后，仅在用户明确要求导航时调用 start_navigation。
 7. 一次请求可能需要多次工具调用。根据上一个工具返回继续决策，直到完成、需要澄清或被安全规则阻止。
-8. 最终回复控制在 120 字内，说明执行对象、关键参数、结果或未执行原因。`;
+8. 最终回复控制在 120 字内，说明执行对象、关键参数、结果或未执行原因。
+9. 浏览器定位只能作为路线原型上下文；充电站目录、道路距离和 ETA 来自演示沙箱。用户追问数据来源或真实性时必须明确此边界。`;
 
 async function callDeepSeek(messages: ModelMessage[]) {
   const apiKey = process.env.DEEPSEEK_API_KEY;

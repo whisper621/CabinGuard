@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   consumeRateLimit,
   createCabinSession,
+  isBrowserLocation,
   isCabinScenario,
   sessionTtlSeconds,
 } from "../../../lib/cabinSession";
@@ -18,7 +19,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const body = await req.json().catch(() => ({})) as { scenario?: unknown };
+  const body = await req.json().catch(() => ({})) as { scenario?: unknown; location?: unknown };
   const scenario = body.scenario === undefined ? "default" : body.scenario;
 
   if (!isCabinScenario(scenario)) {
@@ -28,7 +29,14 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const session = createCabinSession(scenario);
+  if (body.location !== undefined && !isBrowserLocation(body.location)) {
+    return NextResponse.json(
+      { error: { code: "invalid_location", message: "location must contain valid WGS84 coordinates" } },
+      { status: 400 },
+    );
+  }
+
+  const session = createCabinSession(scenario, body.location);
   return NextResponse.json({
     sessionId: session.id,
     scenario: session.scenario,

@@ -20,9 +20,17 @@ load_dotenv(".env.local")
 load_dotenv(".env")
 
 
+class BrowserLocation(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+    accuracy_meters: float | None = Field(None, ge=0, alias="accuracyMeters")
+
+
 class SessionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     scenario: Literal["default", "rain", "moving"] = "default"
+    location: BrowserLocation | None = None
 
 
 class HistoryItem(BaseModel):
@@ -163,7 +171,13 @@ async def create_session(payload: SessionRequest, request: Request) -> JSONRespo
     limited = _rate_limit(request, "session")
     if limited:
         return limited
-    session = store.create_session(payload.scenario)
+    location = payload.location
+    session = store.create_session(
+        payload.scenario,
+        latitude=location.latitude if location else None,
+        longitude=location.longitude if location else None,
+        accuracy_meters=location.accuracy_meters if location else None,
+    )
     return JSONResponse(
         {
             "sessionId": session.id,

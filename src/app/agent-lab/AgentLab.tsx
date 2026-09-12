@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { cabinApiUrl } from "../lib/apiBase";
 
+type GeoPoint = { latitude: number; longitude: number };
 type VehicleState = {
   speed: number;
   battery: number;
@@ -16,9 +17,33 @@ type VehicleState = {
   sunshade: number;
   weather: string;
   rainProbability: number;
+  currentLocation: string;
+  latitude: number;
+  longitude: number;
+  locationSource: "simulated" | "browser_geolocation";
+  locationAccuracyMeters: number | null;
   destination: string;
+  routeDistanceKm: number | null;
+  routeEtaMinutes: number | null;
+  routePolyline: GeoPoint[];
 };
 type CabinScenario = "default" | "rain" | "moving";
+type BrowserLocation = { latitude: number; longitude: number; accuracyMeters?: number };
+
+type SpeechRecognitionLike = {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  maxAlternatives: number;
+  start: () => void;
+  stop: () => void;
+  onresult: ((event: {
+    results: { length: number; [index: number]: { [index: number]: { transcript: string } } };
+  }) => void) | null;
+  onerror: ((event: { error: string }) => void) | null;
+  onend: (() => void) | null;
+};
+type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
 
 type Message = { role: "user" | "assistant"; content: string; time: string };
 type Trace = {
@@ -54,7 +79,15 @@ const initialVehicle: VehicleState = {
   sunshade: 0,
   weather: "多云",
   rainProbability: 20,
+  currentLocation: "京承高速模拟起点",
+  latitude: 40.0415,
+  longitude: 116.4836,
+  locationSource: "simulated",
+  locationAccuracyMeters: null,
   destination: "未设置",
+  routeDistanceKm: null,
+  routeEtaMinutes: null,
+  routePolyline: [],
 };
 
 const prompts = [
@@ -81,6 +114,85 @@ function StateItem({ label, value }: { label: string; value: string }) {
   );
 }
 
+function RoutePreview({ vehicle }: { vehicle: VehicleState }) {
+  const hasRoute = vehicle.routePolyline.length >= 2;
+  const points = hasRoute ? vehicle.routePolyline : [{
+    latitude: vehicle.latitude,
+    longitude: vehicle.longitude,
+  }];
+  const latitudes = points.map((point) => point.latitude);
+  const longitudes = points.map((point) => point.longitude);
+  const minLatitude = Math.min(...latitudes);
+  const maxLatitude = Math.max(...latitudes);
+  const minLongitude = Math.min(...longitudes);
+  const maxLongitude = Math.max(...longitudes);
+  const latitudeSpan = Math.max(maxLatitude - minLatitude, 0.01);
+  const longitudeSpan = Math.max(maxLongitude - minLongitude, 0.01);
+  const plotted = points.map((point) => ({
+    x: 24 + ((point.longitude - minLongitude) / longitudeSpan) * 252,
+    y: 154 - ((point.latitude - minLatitude) / latitudeSpan) * 122,
+  }));
+  const polyline = plotted.map((point) => `${point.x},${point.y}`).join(" ");
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-950 text-white">
+      <div className="flex items-center justify-between px-3 pt-3">
+        <div>
+          <p className="text-xs font-medium text-slate-200">导航路线</p>
+          <p className="mt-0.5 text-[11px] text-slate-400">坐标投影示意 · 非真实道路地图</p>
+        </div>
+        <span className={`rounded-full px-2 py-1 text-[10px] ${hasRoute ? "bg-blue-500/20 text-blue-200" : "bg-white/10 text-slate-400"}`}>
+          {hasRoute ? "导航中" : "等待路线"}
+        </span>
+      </div>
+      <svg aria-label="导航路线示意图" className="mt-2 h-40 w-full" viewBox="0 0 300 180" role="img">
+        <defs>
+          <pattern id="route-grid" width="28" height="28" patternUnits="userSpaceOnUse">
+            <path d="M 28 0 L 0 0 0 28" fill="none" stroke="#1e293b" strokeWidth="1" />
+          </pattern>
+          <linearGradient id="route-line" x1="0" x2="1">
+            <stop offset="0" stopColor="#60a5fa" />
+            <stop offset="1" stopColor="#34d399" />
+          </linearGradient>
+        </defs>
+        <rect width="300" height="180" fill="url(#route-grid)" />
+        {hasRoute ? (
+          <>
+            <polyline points={polyline} fill="none" stroke="#0f172a" strokeWidth="10" strokeLinecap="round" strokeLinejoin="round" />
+            <polyline points={polyline} fill="none" stroke="url(#route-line)" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+            {plotted.slice(1, -1).map((point, index) => (
+              <circle key={`${point.x}-${point.y}-${index}`} cx={point.x} cy={point.y} fill="#93c5fd" r="3" />
+            ))}
+            <circle cx={plotted.at(-1)?.x} cy={plotted.at(-1)?.y} fill="#34d399" r="7" stroke="#d1fae5" strokeWidth="3" />
+          </>
+        ) : (
+          <path d="M56 132 C112 82 182 110 250 46" fill="none" stroke="#334155" strokeDasharray="7 7" strokeWidth="3" />
+        )}
+        <circle cx={hasRoute ? plotted[0].x : 56} cy={hasRoute ? plotted[0].y : 132} fill="#3b82f6" r="7" stroke="#dbeafe" strokeWidth="3" />
+      </svg>
+      <div className="grid grid-cols-2 border-t border-slate-800 text-xs">
+        <div className="border-r border-slate-800 p-3">
+          <p className="text-slate-500">距离</p>
+          <p className="mt-1 font-semibold">{vehicle.routeDistanceKm === null ? "—" : `${vehicle.routeDistanceKm} km`}</p>
+        </div>
+        <div className="p-3">
+          <p className="text-slate-500">预计时间</p>
+          <p className="mt-1 font-semibold">{vehicle.routeEtaMinutes === null ? "—" : `${vehicle.routeEtaMinutes} 分钟`}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function getSpeechRecognitionConstructor() {
+  if (typeof window === "undefined") return undefined;
+  const speechWindow = window as typeof window & {
+    SpeechRecognition?: SpeechRecognitionConstructor;
+    webkitSpeechRecognition?: SpeechRecognitionConstructor;
+  };
+  return speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition;
+}
+
 export default function AgentLab() {
   const [vehicle, setVehicle] = useState(initialVehicle);
   const [sessionId, setSessionId] = useState("");
@@ -95,13 +207,24 @@ export default function AgentLab() {
   const [traces, setTraces] = useState<Trace[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  const [browserLocation, setBrowserLocation] = useState<BrowserLocation | null>(null);
+  const [locationBusy, setLocationBusy] = useState(false);
+  const [voiceSupported, setVoiceSupported] = useState(false);
+  const [speechOutputSupported, setSpeechOutputSupported] = useState(false);
+  const [listening, setListening] = useState(false);
+  const [voiceReply, setVoiceReply] = useState(true);
+  const [voiceNotice, setVoiceNotice] = useState("点击麦克风后，说出中文任务");
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const [meta, setMeta] = useState({ model: "等待调用", turns: 0, tokens: 0, latency: 0, promptVersion: "—", toolVersion: "—" });
 
-  const createSession = async (nextScenario: CabinScenario) => {
+  const createSession = async (
+    nextScenario: CabinScenario,
+    location?: BrowserLocation,
+  ) => {
     const response = await fetch(cabinApiUrl("/api/cabin/session"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ scenario: nextScenario }),
+      body: JSON.stringify({ scenario: nextScenario, ...(location ? { location } : {}) }),
     });
     const data = await response.json() as { sessionId?: string; vehicle?: VehicleState; error?: { message?: string } };
     if (!response.ok || !data.sessionId || !data.vehicle) {
@@ -112,11 +235,128 @@ export default function AgentLab() {
   };
 
   useEffect(() => {
+    setVoiceSupported(Boolean(getSpeechRecognitionConstructor()));
+    setSpeechOutputSupported("speechSynthesis" in window);
     void createSession("default").catch((error) => {
       const message = error instanceof Error ? error.message : "无法创建演示会话";
       setMessages((current) => [...current, { role: "assistant", content: `会话初始化失败：${message}`, time: now() }]);
     });
+    return () => {
+      recognitionRef.current?.stop();
+      window.speechSynthesis?.cancel();
+    };
   }, []);
+
+  const speak = (text: string) => {
+    if (!voiceReply || !speechOutputSupported) return;
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = "zh-CN";
+    utterance.rate = 0.95;
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const toggleVoiceInput = () => {
+    if (listening) {
+      recognitionRef.current?.stop();
+      return;
+    }
+    const Recognition = getSpeechRecognitionConstructor();
+    if (!Recognition) {
+      setVoiceNotice("当前浏览器不支持语音识别，请改用 Chrome 或 Edge，或继续键盘输入");
+      return;
+    }
+    const recognition = new Recognition();
+    recognition.lang = "zh-CN";
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+    recognition.onresult = (event) => {
+      const result = event.results[event.results.length - 1]?.[0]?.transcript?.trim();
+      if (result) {
+        setInput(result);
+        setVoiceNotice("已识别到输入，请核对后点击发送");
+      }
+    };
+    recognition.onerror = (event) => {
+      const message = event.error === "not-allowed"
+        ? "麦克风权限被拒绝，请在浏览器地址栏开启权限"
+        : `语音识别失败：${event.error}`;
+      setVoiceNotice(message);
+    };
+    recognition.onend = () => {
+      setListening(false);
+      recognitionRef.current = null;
+    };
+    recognitionRef.current = recognition;
+    setListening(true);
+    setVoiceNotice("正在聆听…再次点击可停止");
+    try {
+      recognition.start();
+    } catch {
+      setListening(false);
+      setVoiceNotice("麦克风启动失败，请检查浏览器权限");
+    }
+  };
+
+  const useCurrentLocation = () => {
+    if (!("geolocation" in navigator)) {
+      setMessages((current) => [...current, {
+        role: "assistant",
+        content: "当前浏览器不支持定位，继续使用京承高速模拟起点。",
+        time: now(),
+      }]);
+      return;
+    }
+    if (!window.isSecureContext) {
+      setMessages((current) => [...current, {
+        role: "assistant",
+        content: "浏览器定位需要 HTTPS 或 localhost 安全上下文，当前继续使用模拟位置。",
+        time: now(),
+      }]);
+      return;
+    }
+    setLocationBusy(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const location: BrowserLocation = {
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          accuracyMeters: position.coords.accuracy,
+        };
+        void createSession(scenario, location)
+          .then(() => {
+            setBrowserLocation(location);
+            setMessages([{
+              role: "assistant",
+              content: "已用你授权的浏览器坐标新建会话。该位置只用于本次路线原型，不等同于可信车载 GPS。",
+              time: now(),
+            }]);
+            setTraces([]);
+            setMeta({ model: "等待调用", turns: 0, tokens: 0, latency: 0, promptVersion: "—", toolVersion: "—" });
+          })
+          .catch((error) => {
+            const message = error instanceof Error ? error.message : "定位写入会话失败";
+            setMessages((current) => [...current, { role: "assistant", content: message, time: now() }]);
+          })
+          .finally(() => setLocationBusy(false));
+      },
+      (error) => {
+        const reason = error.code === error.PERMISSION_DENIED
+          ? "你拒绝了定位权限"
+          : error.code === error.TIMEOUT
+            ? "定位请求超时"
+            : "浏览器无法获取当前位置";
+        setMessages((current) => [...current, {
+          role: "assistant",
+          content: `${reason}，继续使用模拟位置。`,
+          time: now(),
+        }]);
+        setLocationBusy(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 },
+    );
+  };
 
   const submit = async (rawText: string) => {
     const text = rawText.trim();
@@ -144,6 +384,7 @@ export default function AgentLab() {
       setSessionId(data.sessionId);
       setTraces((current) => [...[...data.traces].reverse(), ...current]);
       setMessages((current) => [...current, { role: "assistant", content: data.message, time: now() }]);
+      speak(data.message);
       setMeta({
         model: data.model,
         turns: data.turns,
@@ -167,7 +408,7 @@ export default function AgentLab() {
 
   const reset = async () => {
     try {
-      await createSession(scenario);
+      await createSession(scenario, browserLocation ?? undefined);
     } catch (error) {
       const message = error instanceof Error ? error.message : "无法创建演示会话";
       setMessages((current) => [...current, { role: "assistant", content: `重置失败：${message}`, time: now() }]);
@@ -188,7 +429,7 @@ export default function AgentLab() {
     if (busy || nextScenario === scenario) return;
     setBusy(true);
     try {
-      await createSession(nextScenario);
+      await createSession(nextScenario, browserLocation ?? undefined);
       setScenario(nextScenario);
       setMessages([{
         role: "assistant",
@@ -213,7 +454,7 @@ export default function AgentLab() {
             <div className="flex items-center gap-2">
               <span className="rounded-lg bg-blue-600 px-2 py-1 text-xs font-bold text-white">CP</span>
               <h1 className="text-lg font-semibold">CabinGuard Agent Lab</h1>
-              <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs text-emerald-700">真实函数调用</span>
+              <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs text-emerald-700">1 Agent · 8 Tools</span>
             </div>
             <p className="mt-1 text-sm text-slate-500">模型规划 → 工具执行 → 策略校验 → 结果回传 → 继续决策</p>
           </div>
@@ -260,6 +501,33 @@ export default function AgentLab() {
               <p className="text-xs text-blue-600">导航目的地</p>
               <p className="mt-1 text-sm font-semibold text-blue-900">{vehicle.destination}</p>
             </div>
+            <div className="mt-2 rounded-xl border border-violet-100 bg-violet-50 p-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-xs text-violet-600">当前位置</p>
+                  <p className="mt-1 break-words text-sm font-semibold text-violet-950">{vehicle.currentLocation}</p>
+                  <p className="mt-1 text-[11px] text-violet-600">
+                    {vehicle.latitude.toFixed(5)}, {vehicle.longitude.toFixed(5)}
+                    {vehicle.locationAccuracyMeters !== null ? ` · ±${Math.round(vehicle.locationAccuracyMeters)} m` : ""}
+                  </p>
+                </div>
+                <span className="shrink-0 rounded-full bg-white px-2 py-1 text-[10px] text-violet-700">
+                  {vehicle.locationSource === "browser_geolocation" ? "浏览器授权" : "模拟"}
+                </span>
+              </div>
+              <button
+                type="button"
+                disabled={busy || locationBusy}
+                onClick={useCurrentLocation}
+                className="mt-3 w-full rounded-lg border border-violet-200 bg-white px-3 py-2 text-xs font-medium text-violet-700 hover:border-violet-400 disabled:opacity-50"
+              >
+                {locationBusy ? "正在请求定位…" : "使用我的当前位置"}
+              </button>
+            </div>
+            <div className="mt-3">
+              <RoutePreview vehicle={vehicle} />
+            </div>
+            <p className="mt-2 text-[11px] leading-4 text-slate-400">定位需你主动授权；精确坐标留在本地会话，不进入模型工具上下文。充电站与道路路线仍为演示沙箱数据。</p>
           </div>
 
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -276,9 +544,23 @@ export default function AgentLab() {
         </aside>
 
         <section className="flex min-h-[680px] flex-col rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-200 px-5 py-4">
-            <h2 className="font-semibold">任务对话</h2>
-            <p className="mt-1 text-xs text-slate-500">每次执行都由 DeepSeek 决定下一步工具，服务端保留最终安全控制权。</p>
+          <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+            <div>
+              <h2 className="font-semibold">任务对话</h2>
+              <p className="mt-1 text-xs text-slate-500">每次执行都由 DeepSeek 决定下一步工具，服务端保留最终安全控制权。</p>
+            </div>
+            <button
+              type="button"
+              disabled={!speechOutputSupported}
+              aria-pressed={voiceReply}
+              onClick={() => {
+                window.speechSynthesis?.cancel();
+                setVoiceReply((current) => !current);
+              }}
+              className={`shrink-0 rounded-lg border px-3 py-2 text-xs font-medium disabled:opacity-40 ${voiceReply ? "border-blue-200 bg-blue-50 text-blue-700" : "border-slate-200 text-slate-500"}`}
+            >
+              {voiceReply ? "播报已开" : "播报已关"}
+            </button>
           </div>
           <div className="flex-1 space-y-4 overflow-auto p-5">
             {messages.map((message, index) => (
@@ -299,7 +581,20 @@ export default function AgentLab() {
                 </button>
               ))}
             </div>
+            <p className={`mb-2 text-xs ${listening ? "text-red-600" : "text-slate-400"}`}>
+              {voiceSupported ? voiceNotice : "当前浏览器不支持语音识别，键盘输入仍可用"}
+            </p>
             <form className="flex gap-2" onSubmit={onSubmit}>
+              <button
+                type="button"
+                disabled={busy || !voiceSupported}
+                aria-label={listening ? "停止语音输入" : "开始中文语音输入"}
+                aria-pressed={listening}
+                onClick={toggleVoiceInput}
+                className={`rounded-xl border px-4 py-3 text-sm font-medium disabled:opacity-40 ${listening ? "border-red-300 bg-red-50 text-red-700" : "border-slate-300 bg-white text-slate-700 hover:border-blue-400"}`}
+              >
+                {listening ? "停止" : "麦克风"}
+              </button>
               <input value={input} onChange={(event) => setInput(event.target.value)} disabled={busy} placeholder="输入一个需要多步执行的座舱任务" className="min-w-0 flex-1 rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-blue-500" />
               <button disabled={busy || !sessionId || !input.trim()} className="rounded-xl bg-blue-600 px-5 py-3 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-40">发送</button>
             </form>

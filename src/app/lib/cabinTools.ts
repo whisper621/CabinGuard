@@ -1,7 +1,28 @@
 import { z } from "zod";
 import type { CabinVehicleState } from "./cabinSession";
 
-export const CABIN_TOOL_VERSION = "2.0.0";
+export const CABIN_TOOL_VERSION = "3.1.0-next";
+
+const chargingStations = [
+  {
+    name: "顺义服务区超充站",
+    latitude: 40.1672,
+    longitude: 116.6371,
+    distanceKm: 18.6,
+    detourKm: 1.8,
+    availableFastChargers: 6,
+    batteryDropPercent: 7,
+  },
+  {
+    name: "怀柔北综合能源站",
+    latitude: 40.3584,
+    longitude: 116.6318,
+    distanceKm: 24.1,
+    detourKm: 4.6,
+    availableFastChargers: 3,
+    batteryDropPercent: 10,
+  },
+] as const;
 
 export type CabinToolStatus = "success" | "blocked";
 export type CabinToolExecution = {
@@ -163,6 +184,50 @@ function hasPrior(context: CabinToolContext, toolName: string) {
   return Boolean(context.priorSuccessfulTools?.includes(toolName));
 }
 
+function haversineKm(
+  latitudeA: number,
+  longitudeA: number,
+  latitudeB: number,
+  longitudeB: number,
+) {
+  const radians = (degrees: number) => degrees * Math.PI / 180;
+  const latitudeDelta = radians(latitudeB - latitudeA);
+  const longitudeDelta = radians(longitudeB - longitudeA);
+  const value = Math.sin(latitudeDelta / 2) ** 2
+    + Math.cos(radians(latitudeA)) * Math.cos(radians(latitudeB))
+    * Math.sin(longitudeDelta / 2) ** 2;
+  return 2 * 6371 * Math.asin(Math.sqrt(value));
+}
+
+function routeDistance(
+  vehicle: CabinVehicleState,
+  station: (typeof chargingStations)[number],
+) {
+  if (vehicle.locationSource === "browser_geolocation") {
+    return Math.round(haversineKm(
+      vehicle.latitude,
+      vehicle.longitude,
+      station.latitude,
+      station.longitude,
+    ) * 1.18 * 10) / 10;
+  }
+  return station.distanceKm;
+}
+
+function routePolyline(
+  vehicle: CabinVehicleState,
+  station: (typeof chargingStations)[number],
+) {
+  return [
+    { latitude: vehicle.latitude, longitude: vehicle.longitude },
+    {
+      latitude: Math.round(((vehicle.latitude + station.latitude) / 2 + 0.008) * 1e6) / 1e6,
+      longitude: Math.round(((vehicle.longitude + station.longitude) / 2 - 0.006) * 1e6) / 1e6,
+    },
+    { latitude: station.latitude, longitude: station.longitude },
+  ];
+}
+
 export function executeCabinTool(
   name: string,
   rawInput: Record<string, unknown>,
@@ -191,7 +256,19 @@ export function executeCabinTool(
           gear: vehicle.speed > 0 ? "D" : "P",
           battery_percent: vehicle.battery,
           estimated_range_km: vehicle.range,
-          route: "京承高速北向",
+          current_location: {
+            name: vehicle.currentLocation,
+            source: vehicle.locationSource,
+            coordinate_available: true,
+          },
+          route: {
+            road: "京承高速北向（模拟）",
+            destination: vehicle.destination,
+            distance_km: vehicle.routeDistanceKm,
+            eta_minutes: vehicle.routeEtaMinutes,
+            polyline_points: vehicle.routePolyline.length,
+            provider: "CabinGuard navigation sandbox",
+          },
           destination: vehicle.destination,
         },
       };
@@ -237,22 +314,18 @@ export function executeCabinTool(
       if (!context.bypassReadPrerequisites && !hasPrior(context, "get_vehicle_state")) {
         return blocked(vehicle, "补能决策前必须先读取车辆电量、续航和当前路线", { retryable: true });
       }
-      const stations = [
-        {
-          name: "顺义服务区超充站",
-          distance_km: 18.6,
-          detour_km: 1.8,
-          available_fast_chargers: 6,
-          estimated_arrival_battery_percent: Math.max(8, vehicle.battery - 7),
-        },
-        {
-          name: "怀柔北综合能源站",
-          distance_km: 24.1,
-          detour_km: 4.6,
-          available_fast_chargers: 3,
-          estimated_arrival_battery_percent: Math.max(8, vehicle.battery - 10),
-        },
-      ].filter((station) => station.detour_km <= (input.max_detour_km as number));
+      const stations = chargingStations
+        .filter((station) => station.detourKm <= (input.max_detour_km as number))
+        .map((station) => ({
+          name: station.name,
+          latitude: station.latitude,
+          longitude: station.longitude,
+          distance_km: routeDistance(vehicle, station),
+          detour_km: station.detourKm,
+          available_fast_chargers: station.availableFastChargers,
+          estimated_arrival_battery_percent: Math.max(8, vehicle.battery - station.batteryDropPercent),
+          data_source: "CabinGuard demo catalog",
+        }));
       return { vehicle, status: "success", output: { stations } };
     }
     case "start_navigation": {
@@ -266,10 +339,35 @@ export function executeCabinTool(
       if (!context.allowedNavigationDestinations?.includes(destination)) {
         return blocked(vehicle, "导航目的地不在本轮充电站搜索结果中", { code: "destination_not_verified" });
       }
+      const station = chargingStations.find((item) => item.name === destination);
+      if (!station) {
+        return blocked(vehicle, "导航目的地缺少可验证的坐标数据", {
+          code: "destination_coordinates_unavailable",
+        });
+      }
+      const routeDistanceKm = routeDistance(vehicle, station);
+      const routeEtaMinutes = Math.max(
+        5,
+        Math.round(routeDistanceKm / 70 * 60 + station.detourKm * 2),
+      );
+      const points = routePolyline(vehicle, station);
       return {
-        vehicle: { ...vehicle, destination },
+        vehicle: {
+          ...vehicle,
+          destination,
+          routeDistanceKm,
+          routeEtaMinutes,
+          routePolyline: points,
+        },
         status: "success",
-        output: { navigation_started: true, destination, eta_minutes: 16 },
+        output: {
+          navigation_started: true,
+          destination,
+          route_distance_km: routeDistanceKm,
+          eta_minutes: routeEtaMinutes,
+          route_provider: "CabinGuard navigation sandbox",
+          data_freshness: "demo fixture",
+        },
       };
     }
     case "control_sunroof": {

@@ -36,8 +36,24 @@ class RateWindow:
     count: int
 
 
-def build_scenario(scenario: Scenario) -> VehicleState:
+def build_scenario(
+    scenario: Scenario,
+    *,
+    latitude: float | None = None,
+    longitude: float | None = None,
+    accuracy_meters: float | None = None,
+) -> VehicleState:
     vehicle = VehicleState()
+    if latitude is not None and longitude is not None:
+        vehicle = vehicle.model_copy(
+            update={
+                "current_location": "浏览器授权位置",
+                "latitude": latitude,
+                "longitude": longitude,
+                "location_source": "browser_geolocation",
+                "location_accuracy_meters": accuracy_meters,
+            }
+        )
     if scenario == "rain":
         return vehicle.model_copy(update={"speed": 0, "weather": "小雨", "rain_probability": 70})
     if scenario == "moving":
@@ -76,14 +92,26 @@ class SessionStore:
                 break
             self._sessions.pop(oldest_id, None)
 
-    def create_session(self, scenario: Scenario = "default") -> CabinSession:
+    def create_session(
+        self,
+        scenario: Scenario = "default",
+        *,
+        latitude: float | None = None,
+        longitude: float | None = None,
+        accuracy_meters: float | None = None,
+    ) -> CabinSession:
         with self._lock:
             now = time.time()
             self._prune(now)
             session = CabinSession(
                 id=str(uuid4()),
                 scenario=scenario,
-                vehicle=build_scenario(scenario),
+                vehicle=build_scenario(
+                    scenario,
+                    latitude=latitude,
+                    longitude=longitude,
+                    accuracy_meters=accuracy_meters,
+                ),
                 created_at=now,
                 expires_at=now + SESSION_TTL_SECONDS,
             )

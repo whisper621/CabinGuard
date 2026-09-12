@@ -1,6 +1,16 @@
 import { randomUUID } from "crypto";
 
 export type CabinScenario = "default" | "rain" | "moving";
+export type BrowserLocation = {
+  latitude: number;
+  longitude: number;
+  accuracyMeters?: number;
+};
+
+export type GeoPoint = {
+  latitude: number;
+  longitude: number;
+};
 
 export type CabinVehicleState = {
   speed: number;
@@ -14,7 +24,15 @@ export type CabinVehicleState = {
   sunshade: number;
   weather: string;
   rainProbability: number;
+  currentLocation: string;
+  latitude: number;
+  longitude: number;
+  locationSource: "simulated" | "browser_geolocation";
+  locationAccuracyMeters: number | null;
   destination: string;
+  routeDistanceKm: number | null;
+  routeEtaMinutes: number | null;
+  routePolyline: GeoPoint[];
 };
 
 type PendingSunroofAction = {
@@ -65,11 +83,31 @@ const baseVehicle = (): CabinVehicleState => ({
   sunshade: 0,
   weather: "多云",
   rainProbability: 20,
+  currentLocation: "京承高速模拟起点",
+  latitude: 40.0415,
+  longitude: 116.4836,
+  locationSource: "simulated",
+  locationAccuracyMeters: null,
   destination: "未设置",
+  routeDistanceKm: null,
+  routeEtaMinutes: null,
+  routePolyline: [],
 });
 
-const buildScenario = (scenario: CabinScenario): CabinVehicleState => {
-  const vehicle = baseVehicle();
+const buildScenario = (
+  scenario: CabinScenario,
+  location?: BrowserLocation,
+): CabinVehicleState => {
+  const vehicle = location
+    ? {
+        ...baseVehicle(),
+        currentLocation: "浏览器授权位置",
+        latitude: location.latitude,
+        longitude: location.longitude,
+        locationSource: "browser_geolocation" as const,
+        locationAccuracyMeters: location.accuracyMeters ?? null,
+      }
+    : baseVehicle();
   if (scenario === "rain") return { ...vehicle, speed: 0, weather: "小雨", rainProbability: 70 };
   if (scenario === "moving") return { ...vehicle, speed: 35 };
   return vehicle;
@@ -90,13 +128,16 @@ function prune() {
   }
 }
 
-export function createCabinSession(scenario: CabinScenario = "default") {
+export function createCabinSession(
+  scenario: CabinScenario = "default",
+  location?: BrowserLocation,
+) {
   prune();
   const now = Date.now();
   const session: CabinSession = {
     id: randomUUID(),
     scenario,
-    vehicle: buildScenario(scenario),
+    vehicle: buildScenario(scenario, location),
     createdAt: now,
     expiresAt: now + SESSION_TTL_MS,
   };
@@ -166,5 +207,25 @@ export function consumeRateLimit(key: string) {
 
 export const isCabinScenario = (value: unknown): value is CabinScenario =>
   value === "default" || value === "rain" || value === "moving";
+
+export const isBrowserLocation = (value: unknown): value is BrowserLocation => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const location = value as Record<string, unknown>;
+  const keys = Object.keys(location);
+  if (keys.some((key) => !["latitude", "longitude", "accuracyMeters"].includes(key))) return false;
+  const latitude = location.latitude;
+  const longitude = location.longitude;
+  const accuracy = location.accuracyMeters;
+  return typeof latitude === "number"
+    && Number.isFinite(latitude)
+    && latitude >= -90
+    && latitude <= 90
+    && typeof longitude === "number"
+    && Number.isFinite(longitude)
+    && longitude >= -180
+    && longitude <= 180
+    && (accuracy === undefined
+      || (typeof accuracy === "number" && Number.isFinite(accuracy) && accuracy >= 0));
+};
 
 export const sessionTtlSeconds = Math.floor(SESSION_TTL_MS / 1000);

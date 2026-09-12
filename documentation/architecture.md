@@ -17,7 +17,7 @@ CabinGuard 是智能座舱可信任务 Agent MVP。它用模拟车辆和充电�
 | --- | --- | --- |
 | 产品 UI | Next.js、React、TypeScript、Tailwind | `/` |
 | Tool Calling 实验台 | DeepSeek Chat Completions | `/agent-lab` |
-| 模型回归评测 | 浏览器驱动真实 Agent API | `/evaluation` |
+| Reliability Lab | 页面或 Python CLI 驱动真实 Agent API；Python 五维评分与一致性聚合 | `/evaluation`、`evaluation/cases.json`、`backend/cabinguard/reliability.py` |
 | 可选语音 | OpenAI Realtime Agents | `/realtime` |
 | Python Agent API | FastAPI、DeepSeek 多轮编排、OpenAPI | `backend/cabinguard/api.py` |
 | 服务端会话 | Python 内存 Store、TTL、限流 | `backend/cabinguard/session.py` |

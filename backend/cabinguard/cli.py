@@ -4,10 +4,13 @@ import argparse
 import asyncio
 import json
 from collections.abc import Sequence
+from datetime import UTC, datetime
+from pathlib import Path
 
 from dotenv import load_dotenv
 
 from .agent import AgentService, DeepSeekError
+from .reliability import load_suite, run_suite
 from .session import SessionStore
 from .tools import ToolContext, execute_tool
 
@@ -86,6 +89,39 @@ async def run_chat(scenario: str) -> None:
         )
 
 
+def run_benchmark(args: argparse.Namespace) -> None:
+    suite = load_suite()
+    if args.list:
+        for case in suite.cases:
+            print(f"{case.id}\t{case.task_type}\t{case.title}\t{len(case.turns)} turn(s)")
+        return
+    if args.task_type == "all" and args.trials == 3 and not args.allow_large_run:
+        raise SystemExit(
+            "为控制模型成本，all + 3 trials 需要显式添加 --allow-large-run；"
+            "面试演示建议先选择单一 --task-type。"
+        )
+
+    store = SessionStore()
+    report = asyncio.run(
+        run_suite(
+            AgentService(store),
+            store,
+            task_type=args.task_type,
+            trials=args.trials,
+            case_ids=args.case,
+        )
+    )
+    print(json.dumps(report["summary"], ensure_ascii=False, indent=2))
+    if args.output:
+        output_path = Path(args.output)
+    else:
+        stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+        output_path = Path("evaluation") / "results" / f"reliability-{stamp}.json"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"报告已保存：{output_path}")
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="cabinguard",
@@ -106,6 +142,20 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=["default", "rain", "moving"],
         default="default",
     )
+
+    benchmark = subparsers.add_parser(
+        "benchmark", help="运行 Base / Hallucination / Disambiguation 可靠性评测"
+    )
+    benchmark.add_argument(
+        "--task-type",
+        choices=["all", "base", "hallucination", "disambiguation"],
+        default="all",
+    )
+    benchmark.add_argument("--trials", choices=[1, 3], type=int, default=1)
+    benchmark.add_argument("--case", action="append", default=[])
+    benchmark.add_argument("--output")
+    benchmark.add_argument("--list", action="store_true")
+    benchmark.add_argument("--allow-large-run", action="store_true")
     return parser
 
 
@@ -120,6 +170,9 @@ def main(argv: Sequence[str] | None = None) -> None:
         return
     if command == "chat":
         asyncio.run(run_chat(args.scenario))
+        return
+    if command == "benchmark":
+        run_benchmark(args)
         return
 
     import uvicorn

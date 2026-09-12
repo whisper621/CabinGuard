@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from . import __version__
 from .agent import AgentService, DeepSeekClient, DeepSeekError, SessionNotFoundError
+from .reliability import TrajectoryStep, evaluate_trial, load_suite
 from .session import SESSION_TTL_SECONDS, SessionStore
 
 load_dotenv(".env.local")
@@ -64,6 +65,14 @@ class InterpretRequest(BaseModel):
         if not value:
             raise ValueError("text must not be blank")
         return value
+
+
+class ScoreRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    case_id: str = Field(alias="caseId")
+    trial: int = Field(default=1, ge=1, le=3)
+    trajectory: list[TrajectoryStep] = Field(min_length=1, max_length=4)
 
 
 store = SessionStore()
@@ -201,3 +210,30 @@ async def interpret(payload: InterpretRequest, request: Request) -> JSONResponse
             status_code=error.status_code,
             content={"error": {"code": "provider_error", "message": str(error)}},
         )
+
+
+@app.get("/api/evaluation/cases")
+async def evaluation_cases() -> dict[str, object]:
+    suite = load_suite()
+    return suite.model_dump(by_alias=True)
+
+
+@app.post("/api/evaluation/score")
+async def score_evaluation(payload: ScoreRequest, request: Request) -> JSONResponse:
+    limited = _rate_limit(request, "evaluation")
+    if limited:
+        return limited
+    suite = load_suite()
+    case = next((item for item in suite.cases if item.id == payload.case_id), None)
+    if case is None:
+        return JSONResponse(
+            status_code=404,
+            content={
+                "error": {
+                    "code": "evaluation_case_not_found",
+                    "message": "评测用例不存在",
+                }
+            },
+        )
+    evaluation = evaluate_trial(case, payload.trajectory, trial=payload.trial)
+    return JSONResponse(evaluation.public_dict())

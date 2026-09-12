@@ -67,3 +67,54 @@ def test_missing_session_is_404_before_model_call() -> None:
     )
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "session_not_found"
+
+
+def test_lists_versioned_reliability_cases() -> None:
+    response = client.get("/api/evaluation/cases")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["version"] == "3.0.0"
+    assert len(payload["cases"]) == 15
+
+
+def test_scores_a_trajectory_with_python_evaluator() -> None:
+    vehicle = store.create_session().vehicle.public_dict()
+    vehicle["targetTemperature"] = 23
+    response = client.post(
+        "/api/evaluation/score",
+        json={
+            "caseId": "B01",
+            "trial": 1,
+            "trajectory": [
+                {
+                    "input": "把空调调到23度",
+                    "response": "已将空调设置为23℃。",
+                    "traces": [
+                        {
+                            "id": "read",
+                            "name": "get_climate_state",
+                            "input": {},
+                            "output": {},
+                            "status": "success",
+                        },
+                        {
+                            "id": "write",
+                            "name": "set_climate",
+                            "input": {"target_temperature_c": 23},
+                            "output": {"executed": True},
+                            "status": "success",
+                        },
+                    ],
+                    "vehicle": vehicle,
+                    "model": "test-model",
+                    "turns": 2,
+                    "tokens": 20,
+                    "latencyMs": 50,
+                    "promptVersion": "test-prompt",
+                    "toolVersion": "test-tools",
+                }
+            ],
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["passed"] is True

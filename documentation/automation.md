@@ -6,7 +6,7 @@
 | --- | --- | --- | --- | --- | --- |
 | 首页稳定演示 | 用户点击/提交 | 浏览器模拟状态、文本 | DeepSeek 解析 API、本地模拟工具 | 本地确认和天气/车速规则 | 消息、状态、工具轨迹 |
 | DeepSeek Agent Lab | 用户提交 | Python 服务端会话、有限历史、文本 | 8 个 Cabin 工具 | Pydantic、读取前置、风险规则、导航授权、6 轮上限 | 消息、状态、Trace、Token/延迟 |
-| 回归评测 | 用户点击运行 | 10 个固定用例 | 会话 API、Agent API | 每例独立会话、有限重试 | 通过率和可下载 JSON |
+| Reliability Lab | 页面或 Python CLI | 15 个共享任务，可按三类筛选并重复 1/3 次 | 会话 API、Agent API、Python 评分 API | 每试次独立会话、全量三次需显式解锁 | 五维得分、Pass^k、Pass@k、版本化 JSON |
 | OpenAI Realtime | 用户建立语音连接 | 浏览器音频/文本、客户端模拟状态 | 8 个 Realtime 工具 | 独立客户端工具规则 | 实时音频、Transcript、事件 |
 
 ## Steering 与硬规则

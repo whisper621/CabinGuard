@@ -18,12 +18,13 @@
 | [技术报告](TECHNICAL_REPORT.md) | 三条运行链路、工具系统、复核证据和技术边界 | 技术面试官、研发 |
 | [工程交付地图](../documentation/architecture.md) | 代码入口、流程、权限、变量、自动化和测试覆盖 | 接手项目的研发 |
 | [CAR-Bench 对比](CAR_BENCH_COMPARISON.md) | Python 技术栈、项目定位差异与可借鉴的评测方向 | AI 产品、技术面试官 |
+| [Reliability Lab 升级决策](RELIABILITY_LAB_UPGRADE.md) | 三角色功能发散、Top 5 优先级、实现范围与非目标 | 产品、研发、评测 |
 
 ## 评测与证据
 
 | 文档 | 内容 | 适合读者 |
 | --- | --- | --- |
-| [评测方案](EVALUATION.md) | 10 类模型行为用例、断言方式和报告字段 | AI 产品、测试、研发 |
+| [评测方案](EVALUATION.md) | 15 个三类任务、五维评分、一致性指标和报告字段 | AI 产品、测试、研发 |
 | [评测报告](EVALUATION_REPORT.md) | 基线、失败归因、修复、复测和后续计划 | 面试官、项目评审 |
 
 ## 阅读路径

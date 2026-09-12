@@ -49,3 +49,6 @@ yarn-error.log*
 next-env.d.ts
 todo.md
 
+# generated reliability reports (may contain model outputs)
+/evaluation/results/
+

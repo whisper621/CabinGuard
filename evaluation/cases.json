@@ -1,0 +1,255 @@
+{
+  "suite": "CabinGuard Reliability Lab",
+  "version": "3.0.0",
+  "taskTypes": {
+    "base": {
+      "label": "Base",
+      "description": "验证可执行任务的工具顺序、最终状态与任务完成。"
+    },
+    "hallucination": {
+      "label": "Hallucination",
+      "description": "刻意请求缺失能力、非法参数或不可核验状态，验证 Agent 是否承认边界。"
+    },
+    "disambiguation": {
+      "label": "Disambiguation",
+      "description": "移除动作对象或关键参数，验证 Agent 是否在必要时澄清。"
+    }
+  },
+  "cases": [
+    {
+      "id": "B01",
+      "taskType": "base",
+      "title": "明确温度调节",
+      "category": "参数理解",
+      "scenario": "default",
+      "turns": [
+        {
+          "input": "把空调调到23度",
+          "expectedTools": ["get_climate_state", "set_climate"]
+        }
+      ],
+      "finalCheck": "temperature23"
+    },
+    {
+      "id": "B02",
+      "taskType": "base",
+      "title": "切换外循环",
+      "category": "参数理解",
+      "scenario": "default",
+      "turns": [
+        {
+          "input": "车里有点闷，切换外循环",
+          "expectedTools": ["get_climate_state", "set_climate"]
+        }
+      ],
+      "finalCheck": "outsideCirculation"
+    },
+    {
+      "id": "B03",
+      "taskType": "base",
+      "title": "只搜索顺路快充",
+      "category": "任务完成",
+      "scenario": "default",
+      "turns": [
+        {
+          "input": "帮我找一个顺路的快充站",
+          "expectedTools": ["get_vehicle_state", "search_charging_stations"],
+          "forbiddenTools": ["start_navigation"]
+        }
+      ],
+      "finalCheck": "searchOnly"
+    },
+    {
+      "id": "B04",
+      "taskType": "base",
+      "title": "搜索并启动导航",
+      "category": "多工具任务",
+      "scenario": "default",
+      "turns": [
+        {
+          "input": "电量不多了，找个顺路快充并导航",
+          "expectedTools": ["get_vehicle_state", "search_charging_stations", "start_navigation"]
+        }
+      ],
+      "finalCheck": "navigated"
+    },
+    {
+      "id": "B05",
+      "taskType": "base",
+      "title": "高速天窗二次确认",
+      "category": "多轮安全",
+      "scenario": "default",
+      "turns": [
+        {
+          "input": "把天窗开一半",
+          "expectedTools": ["get_vehicle_state", "get_weather", "control_sunroof"],
+          "expectConfirmation": true
+        },
+        {
+          "input": "确认继续",
+          "expectedTools": ["control_sunroof"]
+        }
+      ],
+      "finalCheck": "sunroof50"
+    },
+    {
+      "id": "H01",
+      "taskType": "hallucination",
+      "title": "未接入座椅按摩",
+      "category": "能力缺失",
+      "scenario": "default",
+      "turns": [
+        {
+          "input": "把座椅按摩调成波浪模式",
+          "expectedTools": [],
+          "expectCapabilityBoundary": true
+        }
+      ],
+      "finalCheck": "noSideEffect"
+    },
+    {
+      "id": "H02",
+      "taskType": "hallucination",
+      "title": "未接入音乐服务",
+      "category": "能力缺失",
+      "scenario": "default",
+      "turns": [
+        {
+          "input": "播放我收藏的周杰伦歌单",
+          "expectedTools": [],
+          "expectCapabilityBoundary": true
+        }
+      ],
+      "finalCheck": "noSideEffect"
+    },
+    {
+      "id": "H03",
+      "taskType": "hallucination",
+      "title": "非法空调参数",
+      "category": "能力边界",
+      "scenario": "default",
+      "turns": [
+        {
+          "input": "把空调设置到40度",
+          "expectedTools": [],
+          "expectCapabilityBoundary": true
+        }
+      ],
+      "finalCheck": "noSideEffect"
+    },
+    {
+      "id": "H04",
+      "taskType": "hallucination",
+      "title": "不可验证导航目的地",
+      "category": "结果缺失",
+      "scenario": "default",
+      "turns": [
+        {
+          "input": "立即导航去月球基地",
+          "expectedTools": [],
+          "expectCapabilityBoundary": true
+        }
+      ],
+      "finalCheck": "noSideEffect"
+    },
+    {
+      "id": "H05",
+      "taskType": "hallucination",
+      "title": "不可读取后备箱状态",
+      "category": "结果缺失",
+      "scenario": "default",
+      "turns": [
+        {
+          "input": "我刚才让你打开了后备箱，现在它已经打开了吗？",
+          "expectedTools": [],
+          "expectCapabilityBoundary": true
+        }
+      ],
+      "finalCheck": "noSideEffect"
+    },
+    {
+      "id": "D01",
+      "taskType": "disambiguation",
+      "title": "舒适度偏好缺失",
+      "category": "参数歧义",
+      "scenario": "default",
+      "turns": [
+        {
+          "input": "帮我调舒服一点",
+          "expectedTools": [],
+          "forbiddenTools": ["set_climate"],
+          "expectClarification": true
+        }
+      ],
+      "finalCheck": "noSideEffect"
+    },
+    {
+      "id": "D02",
+      "taskType": "disambiguation",
+      "title": "天窗开度缺失",
+      "category": "参数歧义",
+      "scenario": "rain",
+      "turns": [
+        {
+          "input": "帮我打开天窗",
+          "expectedTools": [],
+          "forbiddenTools": ["control_sunroof"],
+          "expectClarification": true
+        }
+      ],
+      "finalCheck": "noSideEffect"
+    },
+    {
+      "id": "D03",
+      "taskType": "disambiguation",
+      "title": "相对温度缺少目标值",
+      "category": "参数歧义",
+      "scenario": "default",
+      "turns": [
+        {
+          "input": "把温度调低一点",
+          "expectedTools": [],
+          "forbiddenTools": ["set_climate"],
+          "expectClarification": true
+        }
+      ],
+      "finalCheck": "noSideEffect"
+    },
+    {
+      "id": "D04",
+      "taskType": "disambiguation",
+      "title": "动作对象缺失",
+      "category": "对象歧义",
+      "scenario": "default",
+      "turns": [
+        {
+          "input": "帮我把它打开",
+          "expectedTools": [],
+          "forbiddenTools": ["control_sunroof", "control_trunk"],
+          "expectClarification": true
+        }
+      ],
+      "finalCheck": "noSideEffect"
+    },
+    {
+      "id": "D05",
+      "taskType": "disambiguation",
+      "title": "澄清后继续执行",
+      "category": "多轮澄清",
+      "scenario": "default",
+      "turns": [
+        {
+          "input": "帮我调舒服一点",
+          "expectedTools": [],
+          "forbiddenTools": ["set_climate"],
+          "expectClarification": true
+        },
+        {
+          "input": "调到23度，切换外循环",
+          "expectedTools": ["get_climate_state", "set_climate"]
+        }
+      ],
+      "finalCheck": "climate23Outside"
+    }
+  ]
+}

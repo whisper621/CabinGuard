@@ -1,6 +1,6 @@
 {
   "name": "cabinguard",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "可信智能座舱任务 Agent：多轮工具调用、服务端安全边界、可观测执行与自动评测",
   "private": true,
   "license": "MIT",
@@ -29,6 +29,7 @@
     "python:install": "python -m pip install -e .[dev]",
     "python:serve": "python -m cabinguard",
     "python:demo": "python -m cabinguard demo",
+    "python:benchmark": "python -m cabinguard benchmark",
     "python:lint": "python -m ruff check backend",
     "python:test": "python -m pytest",
     "check": "npm run lint && npm run typecheck && npm run test:run && npm run python:lint && npm run python:test && npm run build"

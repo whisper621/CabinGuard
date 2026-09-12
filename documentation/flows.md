@@ -40,12 +40,13 @@
 - 硬约束：没有明确导航意图、没有搜索结果或目的地不在本轮候选中时，`start_navigation` 被阻止。
 - 状态变化：成功后更新会话中的目的地。
 
-## 5. 回归评测
+## 5. Reliability Lab
 
-- 参与者：产品/研发评审者、评测页、真实 Agent API。
-- 流程：每个用例创建独立会话 → 调用 DeepSeek Agent → 按有序关键工具链、禁止工具、最终状态和回复核验 → 展示延迟、Token、失败原因 → 可下载 JSON。
+- 参与者：产品/研发评审者、评测页或 Python CLI、真实 Agent API、Python 评分器。
+- 流程：按 Base / Hallucination / Disambiguation 选择共享任务 → 每试次创建独立会话 → 在同一会话执行多轮输入 → 五维评分 → 聚合试次通过率、Pass^k、Pass@k → 导出版本化 JSON。
 - 外部副作用：产生 API 成本；因此不是默认 CI 门禁。
-- CI 门禁：运行 Ruff、51 条 Python 测试、35 条 TypeScript 兼容测试，以及前端 lint、类型检查和生产构建；均不依赖外部模型。
+- 成本护栏：全量 15 个任务重复 3 次必须显式解锁；面试演示默认按单一类型运行。
+- CI 门禁：运行 Ruff、60 条 Python 测试、35 条 TypeScript 兼容测试，以及前端 lint、类型检查和生产构建；均不依赖外部模型。
 
 ## 6. Realtime 语音
 

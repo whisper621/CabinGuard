@@ -11,7 +11,7 @@
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)
 ![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-Agent%20API-009688?logo=fastapi&logoColor=white)
-![Tests](https://img.shields.io/badge/Tests-86%20passed-6E9F18)
+![Tests](https://img.shields.io/badge/Tests-95%20passed-6E9F18)
 ![License](https://img.shields.io/badge/License-MIT-blue.svg)
 
 **[产品演示](#五分钟演示路径) · [Agent Lab](#五个产品入口) · [评测体系](#量化验证) · [案例页](#五个产品入口) · [项目文档](#项目文档)**
@@ -32,7 +32,7 @@ CabinGuard 解决的不是“车载助手能否聊天”，而是“它能否在
 | Agent 能力 | 自然语言理解、多轮 Tool Calling、澄清、风险确认、失败回退 |
 | 可信机制 | Python 服务端状态源、Pydantic 严格校验、动作前置、显式授权、结果依据校验 |
 | 可观测性 | 工具名称、参数、输出、执行状态、模型轮次、Token 与延迟 |
-| 评测资产 | 10 类模型行为用例、51 条 Python 测试、35 条 TypeScript 兼容测试、GitHub Actions 质量门禁 |
+| 评测资产 | 15 个三类可靠性任务、五维确定性评分、Pass^k / Pass@k、60 条 Python 测试、35 条 TypeScript 兼容测试 |
 | 作品集资产 | 交互 MVP、Agent Lab、评测台、案例页、PRD、架构与决策记录 |
 
 > 项目定位：单 Agent、多工具、服务端硬约束的智能座舱任务系统。当前使用车辆与环境模拟数据验证产品策略，不连接真实车辆控制器。
@@ -41,7 +41,7 @@ CabinGuard 解决的不是“车载助手能否聊天”，而是“它能否在
 
 CabinGuard 现在采用产品型 Agent 常见的前后端分工，而不是为了“全 Python”牺牲交互体验：
 
-- **Python 是 Agent 主后端：** FastAPI 接口、多轮模型编排、Pydantic 工具 Schema、服务端会话、安全策略和 51 条测试均在 `backend/`。
+- **Python 是 Agent 主后端：** FastAPI 接口、多轮模型编排、Pydantic 工具 Schema、服务端会话、安全策略、可靠性评测器和 60 条测试均在 `backend/`。
 - **TypeScript/TSX 是产品界面：** Next.js、React 页面、Agent Trace、评测台和浏览器语音交互在 `src/app/`。
 - **TypeScript 后端是兼容回退：** 未启动 Python API 时，界面仍可通过 Next.js Route Handlers 演示；正式讲述应以 Python Agent 主链路为核心。
 
@@ -145,7 +145,7 @@ flowchart LR
 | --- | --- | --- |
 | `/` | 稳定可复现的座舱任务 MVP，包含本地规则回退 | 否；DeepSeek 可选增强 |
 | `/agent-lab` | 多轮 Tool Calling、场景切换、工具轨迹与状态观察 | 是，`DEEPSEEK_API_KEY` |
-| `/evaluation` | 运行 10 类模型行为回归并导出 JSON 报告 | 是，`DEEPSEEK_API_KEY` |
+| `/evaluation` | 按 Base / Hallucination / Disambiguation 运行多轮评测，展示五维得分与一致性 | 是，`DEEPSEEK_API_KEY` |
 | `/case-study` | 面向招聘方的产品问题、取舍、证据与路线图 | 否 |
 | `/realtime?agentConfig=cabinPilot` | 可选的实时语音实验入口 | 是，`OPENAI_API_KEY` |
 
@@ -153,10 +153,12 @@ flowchart LR
 
 | 验证层 | 当前结果 | 说明 |
 | --- | --- | --- |
-| Python Agent 测试 | **51 / 51 通过** | 多轮编排、FastAPI、Pydantic 工具、确认语义、TTL、限流、安全拦截、导航授权与结果依据 |
+| Python Agent 测试 | **60 / 60 通过** | 多轮编排、FastAPI、Pydantic 工具、安全策略、评测 Schema、五维评分与一致性聚合 |
 | TypeScript 兼容测试 | **35 / 35 通过** | 验证内置回退链路与 Python 可信语义保持一致 |
-| 模型行为评测 | **10 类用例** | 覆盖任务完成、澄清、越权、风险与能力边界，可从页面真实运行 |
-| 最近完整模型批次 | **9 / 10** | 一次失败来自网络 TLS 瞬断；行为修复与失败用例均已定向复测通过 |
+| 模型行为评测 | **15 个任务 / 3 类** | Base、Hallucination、Disambiguation 各 5 个，支持单次或 3 次重复运行 |
+| 评测指标 | **5 维 + 3 个聚合指标** | 工具链、最终状态、策略、依据、歧义处理；试次通过率、Pass^k、Pass@k |
+| v3 真实冒烟 | **D05 1 / 1 通过** | 两轮补槽后完成 23℃外循环；`deepseek-flash`，10.4 秒，8656 Token |
+| 历史基线批次 | **9 / 10** | 旧版单次评测一次失败来自网络 TLS 瞬断；不冒充新版 15 任务结果 |
 | 本地质量门禁 | **通过** | Ruff、Pytest、ESLint、TypeScript、Vitest、Next.js 生产构建 |
 | 依赖安全检查 | **0 个已知漏洞** | `npm audit --omit=dev` |
 
@@ -258,7 +260,7 @@ npm run check
 该命令依次运行：
 
 ```text
-ESLint → TypeScript → 35 条 Vitest → Ruff → 51 条 Pytest → Next.js 生产构建
+ESLint → TypeScript → 35 条 Vitest → Ruff → 60 条 Pytest → Next.js 生产构建
 ```
 
 常用单项命令：
@@ -269,6 +271,7 @@ npm run typecheck
 npm run test:run
 npm run python:lint
 npm run python:test
+npm run python:benchmark -- --task-type disambiguation --trials 1
 npm run build
 ```
 
@@ -283,13 +286,15 @@ CabinGuard/
 │  │  ├─ tools.py                   # 8 个 Pydantic 工具与可信执行器
 │  │  ├─ policy.py                  # 确认、导航授权与结果依据策略
 │  │  ├─ session.py                 # 会话、TTL、限流与一次性确认
-│  │  └─ cli.py                     # serve / demo / chat 命令行入口
-│  └─ tests/                        # 51 条 Python Agent、工具与 API 测试
+│  │  ├─ reliability.py             # 多轮运行、五维评分与 Pass 指标
+│  │  └─ cli.py                     # serve / demo / chat / benchmark 入口
+│  └─ tests/                        # 60 条 Python Agent、工具、API 与评测测试
+├─ evaluation/cases.json            # Python / TypeScript 共用的 15 个版本化任务
 ├─ pyproject.toml                   # Python 包、依赖和 cabinguard 命令
 ├─ src/app/
 │  ├─ CabinDemo.tsx                 # 稳定产品演示与本地回退
 │  ├─ agent-lab/                    # DeepSeek 多轮 Tool Calling 实验台
-│  ├─ evaluation/                   # 10 类模型行为评测与报告导出
+│  ├─ evaluation/                   # 三类任务、多轮轨迹、一致性与报告导出
 │  ├─ case-study/                   # 招聘方快速阅读的产品案例页
 │  ├─ realtime/                     # 可选实时语音入口
 │  ├─ api/
@@ -316,6 +321,7 @@ CabinGuard/
 | [系统架构](docs/ARCHITECTURE.md) | 组件关系、信任边界、数据流与安全策略 |
 | [评测方案](docs/EVALUATION.md) | 用例设计、断言方法与报告字段 |
 | [评测报告](docs/EVALUATION_REPORT.md) | 基线结果、失败分析、修复与复测记录 |
+| [Reliability Lab 升级决策](docs/RELIABILITY_LAB_UPGRADE.md) | 功能发散、优先级、实现范围与产品取舍 |
 | [决策日志](docs/DECISION_LOG.md) | 为什么这样做、替代方案和验证标准 |
 | [技术报告](docs/TECHNICAL_REPORT.md) | 实现原理、复核结果与生产化差距 |
 | [作品集手册](docs/PORTFOLIO_PLAYBOOK.md) | 面向 AI、互联网、具身智能和座舱 PM 的讲述重点 |
@@ -334,7 +340,7 @@ CabinGuard/
 - 车辆、天气、地图与充电站均为服务端模拟数据。
 - 会话使用单进程内存存储，不具备分布式持久化和正式身份认证。
 - OpenAI Realtime 为可选实验入口，当前核心可验证链路是 DeepSeek Agent Lab。
-- 10 类模型用例需要有效密钥并产生调用成本，因此不在默认 CI 中运行。
+- 15 个模型任务的真实运行需要有效密钥并产生调用成本，因此不在默认 CI 中运行；任务 Schema 与评分器仍由无密钥测试覆盖。
 
 下一阶段优先级：
 

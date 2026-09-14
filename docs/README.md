@@ -22,6 +22,8 @@
 | [真实导航与驾驶舱升级](LIVE_NAVIGATION_UPGRADE.md) | 公开项目研究、15 个升级方向、真实地图实现与能力边界 | 产品、座舱、研发 |
 | [参考架构升级记录](REFERENCE_ARCHITECTURE_UPGRADE.md) | 参考仓库许可核查、意图/实现差距、三视角创意与 v0.5 落点 | 产品、座舱、研发、面试官 |
 | [混合多 Agent 演进决策](MULTI_AGENT_EVOLUTION_PLAN.md) | 单 Agent 是否足够、拆分阈值、15 个候选方向、Top 5 和四周路线 | AI 产品、座舱、具身、面试官 |
+| [v0.6 可信出行协同升级方案](V06_TRUSTED_CABIN_COPILOT_PLAN.md) | 产品战略、可信任务图、VSS 数字孪生、分域委托、中文 HMI、结果路线图与 DoD | AI 产品、座舱、具身、研发、面试官 |
+| [v0.6 实施与评测报告](V06_IMPLEMENTATION_REPORT.md) | 已落地代码、组合评测、意图/实现差距、产品边界和面试讲法 | AI 产品、座舱、具身、研发、面试官 |
 
 ## 评测与证据
 

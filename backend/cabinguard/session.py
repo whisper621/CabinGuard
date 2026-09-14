@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from uuid import uuid4
 
 from .models import Scenario, VehicleState
+from .policy_kernel import OccupantRole
 
 SESSION_TTL_SECONDS = 30 * 60
 CONFIRMATION_TTL_SECONDS = 2 * 60
@@ -31,6 +32,9 @@ class CabinSession:
     place_candidates: dict[str, dict[str, object]] = field(default_factory=dict)
     preferences: dict[str, str] = field(default_factory=dict)
     trip_history: list[dict[str, object]] = field(default_factory=list)
+    occupant_role: OccupantRole = "driver"
+    state_version: int = 1
+    active_plan_id: str | None = None
 
 
 @dataclass
@@ -107,6 +111,7 @@ class SessionStore:
         longitude: float | None = None,
         accuracy_meters: float | None = None,
         allow_external_routing: bool = False,
+        occupant_role: OccupantRole = "driver",
     ) -> CabinSession:
         with self._lock:
             now = time.time()
@@ -123,6 +128,7 @@ class SessionStore:
                 ),
                 created_at=now,
                 expires_at=now + SESSION_TTL_SECONDS,
+                occupant_role=occupant_role,
             )
             self._sessions[session.id] = session
             return session
@@ -141,7 +147,15 @@ class SessionStore:
 
     def update_vehicle(self, session: CabinSession, vehicle: VehicleState) -> None:
         with self._lock:
+            if session.vehicle != vehicle:
+                session.state_version += 1
             session.vehicle = vehicle
+            session.expires_at = time.time() + SESSION_TTL_SECONDS
+            self._sessions[session.id] = session
+
+    def set_active_plan(self, session: CabinSession, plan_id: str) -> None:
+        with self._lock:
+            session.active_plan_id = plan_id
             session.expires_at = time.time() + SESSION_TTL_SECONDS
             self._sessions[session.id] = session
 

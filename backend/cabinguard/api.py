@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 import os
 from typing import Literal
 from uuid import UUID
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -14,8 +15,12 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from . import __version__
 from .agent import AgentService, DeepSeekClient, DeepSeekError, SessionNotFoundError
 from .capabilities import capability_manifest
+from .evaluation_v6 import load_composite_suite, score_composite_case, suite_summary
+from .planning import compile_task_plan
+from .policy_kernel import OccupantRole
 from .reliability import TrajectoryStep, evaluate_trial, load_suite
 from .session import SESSION_TTL_SECONDS, SessionStore
+from .signal_player import EVENT_LABELS, SignalEventName, apply_signal_event
 
 load_dotenv(".env.local")
 load_dotenv(".env")
@@ -33,6 +38,26 @@ class SessionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     scenario: Literal["default", "rain", "moving"] = "default"
     location: BrowserLocation | None = None
+    occupant_role: OccupantRole = Field("driver", alias="occupantRole")
+
+
+class PlanRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    text: str = Field(min_length=1, max_length=500)
+
+    @field_validator("text")
+    @classmethod
+    def strip_text(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("text must not be blank")
+        return value
+
+
+class SignalEventRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    session_id: UUID = Field(alias="sessionId")
+    event: SignalEventName
 
 
 class HistoryItem(BaseModel):
@@ -188,6 +213,7 @@ async def create_session(payload: SessionRequest, request: Request) -> JSONRespo
         longitude=location.longitude if location else None,
         accuracy_meters=location.accuracy_meters if location else None,
         allow_external_routing=location.allow_external_routing if location else False,
+        occupant_role=payload.occupant_role,
     )
     return JSONResponse(
         {
@@ -195,8 +221,108 @@ async def create_session(payload: SessionRequest, request: Request) -> JSONRespo
             "scenario": session.scenario,
             "vehicle": session.vehicle.public_dict(),
             "expiresInSeconds": SESSION_TTL_SECONDS,
+            "occupantRole": session.occupant_role,
+            "stateVersion": session.state_version,
         }
     )
+
+
+@app.post("/api/cabin/plan")
+async def preview_plan(payload: PlanRequest, request: Request) -> JSONResponse:
+    limited = _rate_limit(request, "plan")
+    if limited:
+        return limited
+    return JSONResponse(compile_task_plan(payload.text).public_dict())
+
+
+@app.get("/api/cabin/evidence/{session_id}")
+async def evidence(session_id: UUID) -> JSONResponse:
+    session = store.get_session(str(session_id))
+    if session is None:
+        return JSONResponse(
+            status_code=404,
+            content={"error": {"code": "session_not_found", "message": "演示会话已过期"}},
+        )
+    events = agent.events.list_events(session.id)
+    return JSONResponse(
+        {
+            "sessionId": session.id,
+            "occupantRole": session.occupant_role,
+            "stateVersion": session.state_version,
+            "eventCount": len(events),
+            "events": events,
+        }
+    )
+
+
+@app.post("/api/cabin/signal-event")
+async def inject_signal_event(payload: SignalEventRequest, request: Request) -> JSONResponse:
+    limited = _rate_limit(request, "signal-event")
+    if limited:
+        return limited
+    session = store.get_session(str(payload.session_id))
+    if session is None:
+        return JSONResponse(
+            status_code=404,
+            content={"error": {"code": "session_not_found", "message": "演示会话已过期"}},
+        )
+    result = apply_signal_event(payload.event, session.vehicle)
+    before = session.state_version
+    store.update_vehicle(session, result.vehicle)
+    event = agent.events.append(
+        session_id=session.id,
+        plan_id=session.active_plan_id,
+        event_type="signal.injected",
+        state_version=session.state_version,
+        payload={
+            "event": result.name,
+            "label": result.label,
+            "changedSignals": result.changed_signals,
+            "stateVersionBefore": before,
+        },
+    )
+    return JSONResponse(
+        {
+            "event": event,
+            "vehicle": result.vehicle.public_dict(),
+            "stateVersion": session.state_version,
+        }
+    )
+
+
+@app.get("/api/cabin/signal-events")
+async def signal_events() -> dict[str, object]:
+    return {
+        "events": [
+            {"id": event, "label": label} for event, label in EVENT_LABELS.items()
+        ]
+    }
+
+
+@app.websocket("/ws/cabin/signals/{session_id}")
+async def signal_stream(websocket: WebSocket, session_id: str) -> None:
+    await websocket.accept()
+    last_version = -1
+    try:
+        while True:
+            session = store.get_session(session_id)
+            if session is None:
+                await websocket.send_json({"type": "session.expired"})
+                await websocket.close(code=1008)
+                return
+            if session.state_version != last_version:
+                last_version = session.state_version
+                await websocket.send_json(
+                    {
+                        "type": "vehicle.state",
+                        "sessionId": session.id,
+                        "stateVersion": session.state_version,
+                        "vehicle": session.vehicle.public_dict(),
+                    }
+                )
+            await asyncio.sleep(0.25)
+    except WebSocketDisconnect:
+        return
 
 
 @app.post("/api/deepseek/agent")
@@ -241,6 +367,27 @@ async def interpret(payload: InterpretRequest, request: Request) -> JSONResponse
 async def evaluation_cases() -> dict[str, object]:
     suite = load_suite()
     return suite.model_dump(by_alias=True)
+
+
+@app.get("/api/evaluation/composite-cases")
+async def composite_evaluation_cases() -> dict[str, object]:
+    return load_composite_suite().model_dump(by_alias=True)
+
+
+@app.get("/api/evaluation/composite-summary")
+async def composite_evaluation_summary() -> dict[str, object]:
+    return suite_summary()
+
+
+@app.get("/api/evaluation/composite-score/{case_id}")
+async def composite_evaluation_score(case_id: str) -> JSONResponse:
+    case = next((item for item in load_composite_suite().cases if item.id == case_id), None)
+    if case is None:
+        return JSONResponse(
+            status_code=404,
+            content={"error": {"code": "evaluation_case_not_found", "message": "组合评测用例不存在"}},
+        )
+    return JSONResponse(score_composite_case(case).model_dump(by_alias=True))
 
 
 @app.post("/api/evaluation/score")

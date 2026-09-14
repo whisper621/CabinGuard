@@ -18,11 +18,13 @@ def test_capability_manifest_is_derived_from_runtime_registries() -> None:
     response = client.get("/api/cabin/capabilities")
     assert response.status_code == 200
     payload = response.json()
-    assert payload["agentCount"] == 1
+    assert payload["agentCount"] == 2
     assert payload["toolCount"] == len(payload["tools"]) == 14
     assert payload["signalCount"] == len(payload["signals"]) == 25
     assert payload["constraintCount"] == len(payload["constraints"]) == 5
     assert any(tool["name"] == "control_cabin_device" for tool in payload["tools"])
+    assert payload["agentArchitecture"]["orchestrator"] == 1
+    assert len(payload["domains"]) == 5
 
 
 def test_creates_rain_session_with_frontend_shape() -> None:
@@ -55,6 +57,58 @@ def test_creates_session_with_browser_location() -> None:
     assert vehicle["latitude"] == 31.2304
     assert vehicle["locationAccuracyMeters"] == 18
     assert vehicle["externalRoutingConsent"] is True
+
+
+def test_session_exposes_occupant_role_and_state_version() -> None:
+    response = client.post(
+        "/api/cabin/session",
+        json={"scenario": "default", "occupantRole": "rear_child"},
+    )
+    assert response.status_code == 200
+    assert response.json()["occupantRole"] == "rear_child"
+    assert response.json()["stateVersion"] == 1
+
+
+def test_previews_task_plan_without_model_call() -> None:
+    response = client.post("/api/cabin/plan", json={"text": "空调调到22度并导航去故宫"})
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["version"] == "6.0.0"
+    assert "set_climate" in payload["allowedTools"]
+    assert "plan_navigation" in payload["allowedTools"]
+
+
+def test_signal_event_updates_state_version_and_evidence() -> None:
+    session = client.post(
+        "/api/cabin/session", json={"scenario": "default"}
+    ).json()
+    response = client.post(
+        "/api/cabin/signal-event",
+        json={"sessionId": session["sessionId"], "event": "rain"},
+    )
+    assert response.status_code == 200
+    assert response.json()["vehicle"]["rainProbability"] == 88
+    assert response.json()["stateVersion"] == 2
+    evidence = client.get(f"/api/cabin/evidence/{session['sessionId']}").json()
+    assert evidence["eventCount"] == 1
+    assert evidence["events"][0]["eventType"] == "signal.injected"
+
+
+def test_websocket_streams_versioned_vehicle_state() -> None:
+    session = client.post(
+        "/api/cabin/session", json={"scenario": "default"}
+    ).json()
+    with client.websocket_connect(f"/ws/cabin/signals/{session['sessionId']}") as socket:
+        message = socket.receive_json()
+    assert message["type"] == "vehicle.state"
+    assert message["stateVersion"] == 1
+
+
+def test_composite_evaluation_suite_is_executable() -> None:
+    response = client.get("/api/evaluation/composite-summary")
+    assert response.status_code == 200
+    assert response.json()["caseCount"] == 24
+    assert response.json()["passRate"] == 1.0
 
 
 def test_rejects_invalid_browser_location() -> None:

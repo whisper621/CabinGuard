@@ -1,22 +1,24 @@
 # CabinGuard 系统架构与执行边界
 
-## 1. 产品链路与双后端运行方式
+## 1. v0.6 主链路与兼容运行方式
 
-项目保留两条互补产品链路。主页是确定性产品演示：DeepSeek 负责结构化意图理解，本地工作流负责工具顺序和安全规则，模型不可用时可回退，适合稳定展示。`/agent-lab` 是开放式 Agent 实验：Python/FastAPI 后端调用 DeepSeek，由模型自主决定下一步，工具结果回传模型，最多执行 6 个模型轮次。Next.js Route Handlers 保留为兼容回退，便于单服务演示。
+v0.6 的主演示位于 `/mission`：FastAPI 先把用户目标编译为可信 TaskPlan，再让主 Agent 在白名单内规划；每次工具调用必须通过乘员 ABAC 与 VSS 约束，计划、策略和回执写入 SQLite 证据账本。`/twin-lab` 用 WebSocket 展示时序车辆状态，`/ops` 负责证据复盘。经典主页和 `/agent-lab` 继续保留；Next.js Route Handlers 仅是兼容回退，不包含 v0.6 全部能力。
 
 ```text
 用户请求
-  ├─ 稳定演示：DeepSeek 意图解析 → 本地工作流 → 安全校验 → 模拟工具
-  └─ Agent Lab：Python 会话 → DeepSeek Tool Calling ↔ Pydantic 工具执行器 → 最终回复
-                                  ├─ 25 个 VSS 对齐信号 / 5 条声明式约束
-                                  ├─ 会话偏好 / 行程回执
-                                  ├─ 强制安全策略
-                                  └─ 地点检索 / 道路算路适配器
+  → FastAPI 会话（乘员角色 + stateVersion）
+  → TaskPlan Compiler（节点 + 依赖 + 波次 + 风险 + allowedTools）
+  → 主 Agent / Orchestrator
+  → Policy Kernel（TaskPlan allowlist + ABAC）
+  → Navigation Domain Agent / Cabin Safety / Memory / System Service
+  → Pydantic + 25 个 VSS 信号 + 5 条声明式约束
+  → Vehicle Sandbox / Nominatim / OSRM
+  → SQLite Evidence Ledger + WebSocket Signal Stream + HMI
 ```
 
 ## 2. 信任边界
 
-模型属于不可信规划层，可以选择工具和参数，但不能直接修改车辆状态。服务端会话是演示状态边界，工具执行器从会话读取和写入模拟车辆状态，并负责参数范围、车速、天气和挡位校验；只有工具返回成功后，模型才能向用户声明执行完成。
+模型属于不可信规划层，可以选择工具和参数，但不能扩大 TaskPlan 的可执行范围，也不能直接修改车辆状态。服务端会话是演示状态边界，工具执行器从会话读取和写入模拟车辆状态，并负责乘员权限、参数范围、车速、天气和挡位校验；只有工具返回成功后，模型才能向用户声明执行完成。
 
 当前强制规则：
 
@@ -38,7 +40,7 @@
 
 ## 3. 可观测性
 
-每次函数调用记录工具名、模型参数、工具输出、成功或拦截状态。Agent Lab 同时展示模型名、轮次数、累计 Token、端到端延迟和座舱域状态；System Lab 从 `/api/cabin/capabilities` 动态读取工具、权限、信号、约束、集成与执行图；评测入口把同一批字段写入可下载的 JSON 报告。
+每次请求写入 `plan.created`，每次调用写入 `policy.decision` 和 `tool.receipt`，数字孪生事件写入 `signal.injected`。Trace 关联 `planId`、`taskId`、领域、策略代码和执行前后 `stateVersion`；Ops 页面可按会话筛选并查看 SQLite 原始证据。
 
 ## 4. 数据边界
 

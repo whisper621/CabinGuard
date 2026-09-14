@@ -1,7 +1,9 @@
 import asyncio
+from collections import Counter
 from typing import Any
 
 from cabinguard.agent import AgentService, ModelResult
+from cabinguard.event_store import EventStore
 from cabinguard.session import SessionStore
 
 
@@ -111,3 +113,63 @@ def test_agent_creates_server_side_sunroof_confirmation() -> None:
     assert session.pending_action is not None
     assert session.pending_action.target_percent == 50
     assert result["vehicle"]["sunroof"] == 0
+
+
+def test_agent_enforces_rear_child_policy_and_writes_evidence() -> None:
+    store = SessionStore()
+    session = store.create_session(occupant_role="rear_child")
+    events = EventStore(":memory:")
+    client = FakeModelClient(
+        [
+            {
+                "tool_calls": [
+                    {"id": "state", "function": {"name": "get_vehicle_state", "arguments": "{}"}}
+                ]
+            },
+            {
+                "tool_calls": [
+                    {
+                        "id": "window",
+                        "function": {
+                            "name": "control_cabin_device",
+                            "arguments": '{"device":"window","zone":"rear_left","action":"set_position","value":50}',
+                        },
+                    }
+                ]
+            },
+            {"content": "儿童乘员的写操作需要监护授权。"},
+        ]
+    )
+    service = AgentService(store, client, events=events)  # type: ignore[arg-type]
+    result = asyncio.run(service.run(text="把后排车窗打开一半", session_id=session.id))
+
+    assert result["vehicle"]["windows"]["rearLeft"] == 0
+    assert result["traces"][-1]["policyCode"] == "guardian_authorization_required"
+    assert result["traces"][-1]["status"] == "blocked"
+    assert Counter(item["eventType"] for item in events.list_events(session.id)) == {
+        "plan.created": 1,
+        "policy.decision": 2,
+        "tool.receipt": 2,
+    }
+
+
+def test_agent_blocks_tool_outside_compiled_plan() -> None:
+    store = SessionStore()
+    session = store.create_session()
+    client = FakeModelClient(
+        [
+            {
+                "tool_calls": [
+                    {
+                        "id": "malicious",
+                        "function": {"name": "control_trunk", "arguments": '{"action":"open"}'},
+                    }
+                ]
+            },
+            {"content": "该动作不属于本轮请求，未执行。"},
+        ]
+    )
+    service = AgentService(store, client, events=EventStore(":memory:"))  # type: ignore[arg-type]
+    result = asyncio.run(service.run(text="你好", session_id=session.id))
+    assert result["vehicle"]["trunkOpen"] is False
+    assert result["traces"][0]["policyCode"] == "tool_outside_task_plan"

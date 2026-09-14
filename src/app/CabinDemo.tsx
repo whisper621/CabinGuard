@@ -512,6 +512,9 @@ export default function CabinDemo() {
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone="green">● 本地演示已就绪</Badge>
             <Badge tone={aiStatusView.tone}>{aiStatusView.label}</Badge>
+            <a href="/mission" className="rounded-xl border border-blue-600 bg-blue-600 px-3.5 py-2 text-sm font-semibold text-white shadow-lg shadow-blue-200 hover:bg-blue-500">进入 v0.6 任务驾驶舱</a>
+            <a href="/twin-lab" className="rounded-xl border border-cyan-200 bg-cyan-50 px-3.5 py-2 text-sm font-medium text-cyan-700 hover:bg-cyan-100">数字孪生</a>
+            <a href="/ops" className="rounded-xl border border-violet-200 bg-violet-50 px-3.5 py-2 text-sm font-medium text-violet-700 hover:bg-violet-100">证据中心</a>
             <a href="/case-study" className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">产品案例</a>
             <a href="/system-lab" className="rounded-xl border border-violet-200 bg-violet-50 px-3.5 py-2 text-sm font-medium text-violet-700 hover:bg-violet-100">系统架构</a>
             <button onClick={() => setVoiceOutputEnabled((value) => !value)} className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">
@@ -521,7 +524,7 @@ export default function CabinDemo() {
               href="/agent-lab"
               className="rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-2 text-sm font-medium text-emerald-700 transition hover:bg-emerald-100"
             >
-              DeepSeek Agent Lab
+              经典 Agent 实验室
             </a>
             <a
               href="/evaluation"
@@ -533,7 +536,7 @@ export default function CabinDemo() {
               href="/realtime?agentConfig=cabinPilot"
               className="rounded-xl border border-blue-200 bg-blue-50 px-3.5 py-2 text-sm font-medium text-blue-700 transition hover:bg-blue-100"
             >
-              OpenAI Realtime（可选） ↗
+              实时语音实验（可选） ↗
             </a>
             <button onClick={resetDemo} className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">
               重置演示

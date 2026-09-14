@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import caseSuiteJson from "../../../evaluation/cases.json";
 import { cabinApiUrl, usesExternalCabinApi } from "../lib/apiBase";
 
@@ -110,6 +110,8 @@ type TrialEvaluation = {
   error?: string | null;
   scorer?: "python" | "browser";
 };
+
+type CompositeSummary = { version: string; caseCount: number; passed: number; passRate: number };
 
 const suite = caseSuiteJson as EvaluationSuite;
 const dimensionNames: DimensionName[] = ["toolSequence", "finalState", "policy", "grounding", "uncertainty"];
@@ -296,6 +298,14 @@ export default function EvaluationLab() {
   const [progress, setProgress] = useState(0);
   const [taskType, setTaskType] = useState<TaskTypeFilter>("all");
   const [trialCount, setTrialCount] = useState<1 | 3>(1);
+  const [composite, setComposite] = useState<CompositeSummary | null>(null);
+
+  useEffect(() => {
+    fetch(cabinApiUrl("/api/evaluation/composite-summary"))
+      .then((response) => response.ok ? response.json() as Promise<CompositeSummary> : null)
+      .then((value) => setComposite(value))
+      .catch(() => setComposite(null));
+  }, []);
 
   const selectedCases = useMemo(
     () => suite.cases.filter((test) => taskType === "all" || test.taskType === taskType),
@@ -432,12 +442,15 @@ export default function EvaluationLab() {
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-5 py-4">
           <div>
             <div className="flex items-center gap-2">
-              <span className="rounded-lg bg-violet-600 px-2 py-1 text-xs font-bold text-white">RELIABILITY</span>
-              <h1 className="text-lg font-semibold">CabinGuard Reliability Lab</h1>
+              <span className="rounded-lg bg-violet-600 px-2 py-1 text-xs font-bold text-white">可靠性实验室</span>
+              <h1 className="text-lg font-semibold">CabinGuard 可靠性评测</h1>
             </div>
             <p className="mt-1 text-sm text-slate-500">三类任务、多轮轨迹、五维评分与一致性指标，不用一次成功代表稳定可靠。</p>
           </div>
           <nav className="flex items-center gap-2 text-sm">
+            <Link className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-blue-700 hover:bg-blue-100" href="/mission">任务驾驶舱</Link>
+            <Link className="rounded-lg border border-slate-200 bg-white px-3 py-2 hover:bg-slate-50" href="/twin-lab">数字孪生</Link>
+            <Link className="rounded-lg border border-slate-200 bg-white px-3 py-2 hover:bg-slate-50" href="/ops">证据中心</Link>
             <Link className="rounded-lg border border-slate-200 bg-white px-3 py-2 hover:bg-slate-50" href="/">稳定演示</Link>
             <Link className="rounded-lg border border-slate-200 bg-white px-3 py-2 hover:bg-slate-50" href="/case-study">产品案例</Link>
             <Link className="rounded-lg border border-slate-200 bg-white px-3 py-2 hover:bg-slate-50" href="/agent-lab">Agent Lab</Link>
@@ -446,6 +459,9 @@ export default function EvaluationLab() {
       </header>
 
       <section className="mx-auto max-w-7xl px-5 py-6">
+        <div className="mb-5 rounded-2xl border border-violet-200 bg-gradient-to-r from-violet-50 to-blue-50 p-5 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-4"><div><p className="text-xs font-semibold tracking-[0.16em] text-violet-600">v0.6 组合场景契约</p><h2 className="mt-2 text-xl font-semibold">任务图 × 乘员权限 × 越权隔离</h2><p className="mt-2 text-sm text-slate-600">24 条零模型成本确定性用例，验证领域召回、工具白名单、DAG 节点数与 ABAC 决策；下方 15 条模型轨迹评测负责验证真实对话表现。</p></div><div className="grid min-w-56 grid-cols-3 gap-2 text-center"><div className="rounded-xl bg-white/80 p-3"><p className="text-2xl font-semibold text-violet-700">{composite?.caseCount ?? 24}</p><p className="text-[10px] text-slate-500">场景数</p></div><div className="rounded-xl bg-white/80 p-3"><p className="text-2xl font-semibold text-emerald-600">{composite?.passed ?? "—"}</p><p className="text-[10px] text-slate-500">已通过</p></div><div className="rounded-xl bg-white/80 p-3"><p className="text-2xl font-semibold text-blue-700">{composite ? `${Math.round(composite.passRate * 100)}%` : "—"}</p><p className="text-[10px] text-slate-500">契约通过率</p></div></div></div>
+        </div>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <MetricCard label="试次通过率" value={`${summary.trialRate}%`} hint={`${summary.passedTrials}/${results.length || totalTrials} 个试次`} />
           <MetricCard label={`Pass^${trialCount}`} value={`${summary.passPowerK}%`} hint="每次都通过：部署一致性" />

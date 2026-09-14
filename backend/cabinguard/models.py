@@ -125,11 +125,19 @@ class ToolExecution(BaseModel):
 
 
 class Trace(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     id: str
     name: str
     input: dict[str, object]
     output: dict[str, object]
     status: ToolStatus
+    plan_id: str | None = Field(default=None, alias="planId")
+    task_id: str | None = Field(default=None, alias="taskId")
+    domain: str | None = None
+    policy_code: str | None = Field(default=None, alias="policyCode")
+    state_version_before: int | None = Field(default=None, alias="stateVersionBefore")
+    state_version_after: int | None = Field(default=None, alias="stateVersionAfter")
 
     def public_dict(self) -> dict[str, object]:
-        return self.model_dump()
+        return self.model_dump(by_alias=True, exclude_none=True)

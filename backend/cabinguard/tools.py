@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from .models import GeoPoint, ToolExecution, VehicleState
 from .signals import evaluate_write, signal_state
 
-TOOL_VERSION = "5.0.0-python"
+TOOL_VERSION = "6.0.0-python"
 ONLINE_TOOL_NAMES = frozenset({"search_places", "plan_navigation"})
 
 CHARGING_STATIONS: tuple[dict[str, object], ...] = (

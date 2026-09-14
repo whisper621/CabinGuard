@@ -1,5 +1,7 @@
 # CabinGuard 技术原理与项目说明
 
+> 本文主体记录 v0.5 基线，v0.6 已新增 TaskPlan、领域 Manifest、乘员 ABAC、SQLite 证据账本、WebSocket 数字孪生和 24 条组合评测。当前实现事实与边界以 [v0.6 实施与评测报告](V06_IMPLEMENTATION_REPORT.md) 为准。
+
 ## 1. 项目定位与结论
 
 CabinGuard 是一个面向智能座舱场景的可信任务 Agent MVP。它验证的不是“能否聊天”，而是把自然语言目标安全地转为可观察、可校验的工具调用：
@@ -11,7 +13,7 @@ CabinGuard 是一个面向智能座舱场景的可信任务 Agent MVP。它验�
 
 当前版本已经具备可展示、可交互、可复测的 MVP 闭环，并接入低频演示用的真实地点与道路数据，适合作为 AI 产品经理的作品集项目；它不是已接入真实车辆、实时交通、充电网络或车端网关的生产系统。
 
-最准确的项目表述是：**单 Agent、多工具调用、服务端安全约束的智能座舱任务系统**。不要将其描述为多智能体系统，也不要称为真实车辆控制平台。
+最准确的项目表述是：**一个主编排 Agent + 一个导航领域 Agent 边界 + 四个确定性服务的可信智能座舱协同系统**。当前仍复用一个基础模型客户端，因此不要表述成“多个大模型”，也不要称为真实车辆控制平台。
 
 ## 2. 核心产品实现
 
@@ -23,6 +25,8 @@ CabinGuard 围绕可信智能座舱任务闭环完成了以下核心产品实现
 - 25 个 VSS 对齐信号，以及天窗、车窗、后备箱、空调等 5 条声明式约束；
 - Agent Lab 调用轨迹与座舱状态展示、System Lab 运行时架构控制台；
 - 15 个三类可靠性任务、Python 五维评分、一致性指标及 JSON 报告导出；
+- 24 个组合任务契约、TaskPlan 白名单、四类乘员 ABAC、状态版本与 SQLite 因果证据；
+- 中文任务驾驶舱、VSS 数字孪生实验室与编排证据中心；
 - PRD、架构说明和评测记录。
 
 仓库仅保留与 CabinGuard 产品链路有关的 `cabinPilotAgent` 及实时语音基础设施。第三方组件和许可统一记录在根目录 `THIRD_PARTY_NOTICES.md`，不与核心产品能力混记。
@@ -31,12 +35,12 @@ CabinGuard 围绕可信智能座舱任务闭环完成了以下核心产品实现
 
 | 层级 | 技术与职责 |
 | --- | --- |
-| 前端 | Next.js 16 App Router、React 19、TypeScript、Tailwind CSS，承载主页、Agent Lab、System Lab 和评测页 |
+| 前端 | Next.js 16 App Router、React 19、TypeScript、Tailwind CSS，承载 Mission、Twin Lab、Ops、Agent Lab、System Lab 和评测页 |
 | 模型服务 | DeepSeek Chat Completions 的结构化意图解析与函数调用；可选 OpenAI Realtime API 语音会话 |
-| Python Agent 后端 | Python 3.11+、FastAPI、Pydantic、HTTPX，承载多轮编排、会话、限流、工具执行和 OpenAPI |
+| Python Agent 后端 | Python 3.11+、FastAPI、Pydantic、HTTPX、SQLite，承载 TaskPlan、ABAC、多轮编排、证据、WebSocket、工具执行和 OpenAPI |
 | Agent 框架 | `@openai/agents` 的 RealtimeAgent 与工具定义，用于可选 Realtime 语音模式 |
 | 兼容服务端 | Next.js Route Handlers、Zod、Undici；未连接 Python API 时提供单服务回退 |
-| 运行状态 | 主页使用 React 内存状态；Agent Lab 使用 30 分钟服务端会话，包含车辆状态、偏好和最近 10 条成功导航回执；当前没有数据库、Redis 或账号级持久化 |
+| 运行状态 | 30 分钟服务端会话包含车辆状态、版本、乘员角色、偏好和最近 10 条成功导航回执；SQLite 持久化演示证据，但没有账号级数据持久化或 Redis |
 | 语音能力 | 浏览器 Speech Recognition 做中文语音输入，Speech Synthesis 做结果播报；Realtime 语音是独立可选入口 |
 
 ## 4. 三条运行链路
@@ -94,7 +98,7 @@ Agent Lab 还在主链路外侧补充了三类交互上下文：浏览器中文�
 
 ## 5. Agent 的工具系统
 
-核心产品是 1 个任务 Agent。Python 主实现位于 `backend/cabinguard/agent.py`，可选实时语音配置为 `cabinPilotAgent`。它能够调用以下 14 个工具：
+核心产品是 1 个主编排 Agent 与 1 个导航领域 Agent 边界；舒适、车身、记忆和系统感知是确定性服务，不包装成 Agent。Python 主实现位于 `backend/cabinguard/agent.py`，它能够调用以下 14 个工具：
 
 | 工具 | 输入 | 返回/状态改变 | 业务目的与约束 |
 | --- | --- | --- | --- |
@@ -113,7 +117,7 @@ Agent Lab 还在主链路外侧补充了三类交互上下文：浏览器中文�
 | `manage_preferences` | remember/list/forget、键值 | 更新或读取当前会话偏好 | 写入/删除需要本轮用户明确授权 |
 | `query_trip_history` | 无 | 最近成功导航形成的会话行程 | 只接受执行回执，最多 10 条 |
 
-所有工具调用都会产生 `Trace`：工具名称、模型参数、工具输出和 `success/blocked` 状态。Agent Lab 把 Trace 展示给用户，评测页也会读取同一字段判断工具链是否符合预期。
+所有工具调用都会产生 `Trace`：除工具参数、输出和 `success/blocked` 外，还包含 `planId`、`taskId`、领域、策略代码和执行前后状态版本；同源事件追加写入 SQLite，供 Ops 页面复盘。
 
 ## 6. 可信性与安全设计
 
@@ -172,7 +176,7 @@ Reliability Lab 从共享 JSON 加载 15 个 Base、Hallucination、Disambiguati
 
 | 验证项 | 结果 | 说明 |
 | --- | --- | --- |
-| `python -m pytest` | 通过 | 75 条 Python 测试覆盖多轮编排、FastAPI、Pydantic 工具、VSS 约束、记忆、真实地点/道路协议、定位同意、策略、评分和聚合 |
+| `python -m pytest` | 通过 | 91 条 Python 测试覆盖任务图、ABAC、证据、WebSocket、多轮编排、工具、VSS、记忆、地图与评测 |
 | `python -m cabinguard demo` | 通过 | 不依赖模型密钥完成 Python 工具读取与写入闭环 |
 | Python FastAPI 冒烟测试 | HTTP 200 | `/api/health` 返回 `runtime=python`，可创建降雨场景会话 |
 | `npm run build` | 通过 | Next.js 编译、类型检查、静态页生成均通过 |
@@ -197,9 +201,9 @@ Reliability Lab 从共享 JSON 加载 15 个 Base、Hallucination、Disambiguati
 
 1. **不是真实车控。** 当前车辆状态由服务端内存会话模拟；生产系统必须从可信车端网关或后端状态服务读取。
 2. **只有演示级限流，没有身份认证。** 当前 DeepSeek Agent 路由按来源提供内存窗口限流，但没有用户身份、配额、持久化预算或分布式限流，公开部署仍有 API 成本和滥用风险。
-3. **没有持久化。** 会话、状态和 Trace 不写入数据库，刷新后会丢失；评测报告仅下载到本地。
+3. **业务状态没有持久化。** 会话与车辆状态仍是内存数据；v0.6 仅将演示证据写入 SQLite，尚无账号级用户数据治理。
 4. **Realtime 尚未启用验证。** 当前只有 DeepSeek 主链路可实际演示。
-5. **模型行为评测尚未成为自动门禁。** 确定性规则已有 75 条 Pytest 与 39 条 Vitest；15 个模型任务仍需从页面或 Python CLI 主动运行并保存报告。
+5. **模型行为评测尚未成为自动门禁。** 确定性规则已有 91 条 Pytest 与 39 条 Vitest，24 条组合契约进入本地门禁；15 个模型任务仍需主动运行并保存报告。
 6. **跨链路参数不完全一致。** DeepSeek 空调风量为 1–5 档，Realtime 为 1–7 档；高速确认字段分别为 `confirmed` 与 `high_speed_confirmed`。后续接入真实后端前应统一契约。
 7. **确认状态仍不是生产级授权。** 高速天窗确认已绑定会话、动作参数和 2 分钟有效期；生产环境仍应绑定任务 ID、车端签名、用户身份和审计记录。
 8. **文案仍有语义歧义。** 天窗成功路径返回 `sunshade_percent: 100`，但模型曾描述为“遮阳帘保持全闭”；应在产品定义中统一百分比代表“开度”还是“闭合度”，并由前端模板化结果避免模型自行表述。
@@ -209,7 +213,7 @@ Reliability Lab 从共享 JSON 加载 15 个 Base、Hallucination、Disambiguati
 
 ### 可写的项目描述
 
-> 设计并实现 CabinGuard 可信座舱任务 Agent，使用 Python、FastAPI 与 Pydantic 完成多轮编排、14 个领域工具、25 个 VSS 对齐信号、5 条声明式约束和会话记忆，构建“意图理解—状态读取—安全校验—工具执行—结果核验”闭环；接入 Nominatim/OSRM 真实地点与道路数据，并搭建 System Lab 与包含 15 个三类任务、五维评分和 Pass 一致性指标的 Reliability Lab。
+> 设计并实现 CabinGuard 可信座舱协同 Agent，使用 Python、FastAPI、Pydantic、SQLite 与 WebSocket 将跨域请求编译为带依赖、风险、权限和工具白名单的 TaskPlan；以四类乘员 ABAC、25 个 VSS 对齐信号、5 条声明式约束、状态版本和因果证据账本保障执行可信；接入 Nominatim/OSRM 真实地点与道路数据，搭建任务驾驶舱、数字孪生实验室、证据中心、24 个组合契约和 15 个模型可靠性任务。
 
 ### 可量化表述
 

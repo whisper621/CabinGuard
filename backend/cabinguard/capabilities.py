@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from .domains import DOMAIN_MANIFESTS, TOOL_DOMAINS
+from .policy_kernel import READ_TOOLS
 from .signals import CONSTRAINTS, SIGNALS
 from .tools import TOOL_DESCRIPTIONS, TOOL_MODELS, TOOL_VERSION
 
@@ -30,22 +32,36 @@ def capability_manifest() -> dict[str, object]:
             "category": TOOL_META.get(name, ("其他", "direct"))[0],
             "permission": TOOL_META.get(name, ("其他", "direct"))[1],
             "description": TOOL_DESCRIPTIONS[name],
+            "domains": sorted(TOOL_DOMAINS.get(name, {"system"})),
         }
         for name in TOOL_MODELS
     ]
     return {
         "version": TOOL_VERSION,
-        "agentCount": 1,
+        "agentCount": 2,
+        "agentArchitecture": {
+            "orchestrator": 1,
+            "domainAgents": 1,
+            "deterministicServices": 4,
+            "description": "一个主编排 Agent + 导航领域 Agent + 四个确定性服务",
+        },
         "toolCount": len(tools),
         "signalCount": len(SIGNALS),
         "constraintCount": len(CONSTRAINTS),
         "tools": tools,
         "signals": [signal.public_dict() for signal in SIGNALS],
         "constraints": [constraint.public_dict() for constraint in CONSTRAINTS],
+        "domains": [manifest.public_dict() for manifest in DOMAIN_MANIFESTS],
+        "policyKernel": {
+            "mode": "TaskPlan allowlist + ABAC + VSS constraints",
+            "roles": ["driver", "front_passenger", "rear_child", "guest"],
+            "readTools": sorted(READ_TOOLS),
+        },
         "executionGraph": {
             "nodes": [
                 {"id": "input", "label": "文本 / 中文语音", "layer": "HMI"},
-                {"id": "planner", "label": "DeepSeek 多轮规划", "layer": "Agent"},
+                {"id": "planner", "label": "主 Agent / Orchestrator", "layer": "Agent"},
+                {"id": "taskplan", "label": "可信任务图编译器", "layer": "Planning"},
                 {"id": "registry", "label": "工具注册与严格参数", "layer": "Runtime"},
                 {"id": "policy", "label": "授权 / 前置 / 声明式约束", "layer": "Guardrail"},
                 {"id": "executors", "label": "导航 / 车控 / 记忆执行器", "layer": "Execution"},
@@ -54,7 +70,8 @@ def capability_manifest() -> dict[str, object]:
             ],
             "edges": [
                 ["input", "planner"],
-                ["planner", "registry"],
+                ["planner", "taskplan"],
+                ["taskplan", "registry"],
                 ["registry", "policy"],
                 ["policy", "executors"],
                 ["executors", "state"],
@@ -81,4 +98,5 @@ def compact_capabilities() -> dict[str, object]:
         "constraint_count": manifest["constraintCount"],
         "tool_names": list(TOOL_MODELS),
         "execution_boundary": "真实地点与道路服务；车辆控制为安全沙箱",
+        "architecture": manifest["agentArchitecture"],
     }

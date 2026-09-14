@@ -11,9 +11,12 @@ from typing import Any
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from .domains import domain_for_tool
+from .event_store import EventStore
 from .memory import SessionMemoryExecutor
-from .models import Trace, VehicleState
+from .models import ToolExecution, Trace, VehicleState
 from .navigation import NavigationToolExecutor
+from .planning import TaskPlan, compile_task_plan
 from .policy import (
     classify_confirmation,
     ground_agent_message,
@@ -21,6 +24,7 @@ from .policy import (
     is_navigation_requested,
     is_place_search_requested,
 )
+from .policy_kernel import authorize_tool
 from .session import CabinSession, SessionStore
 from .tools import (
     ONLINE_TOOL_NAMES,
@@ -31,7 +35,7 @@ from .tools import (
     execute_tool,
 )
 
-AGENT_PROMPT_VERSION = "5.0.0-python"
+AGENT_PROMPT_VERSION = "6.0.0-python"
 MAX_AGENT_TURNS = 6
 
 SYSTEM_PROMPT = """你是 CabinGuard，一名可信的智能座舱任务 Agent。你的职责是把用户目标转成真实工具调用，并依据工具返回值用简洁中文反馈。
@@ -53,6 +57,8 @@ SYSTEM_PROMPT = """你是 CabinGuard，一名可信的智能座舱任务 Agent�
 14. 车窗、座椅、氛围灯和除霜先调用 get_vehicle_state，再调用 control_cabin_device；工具返回的 reject/clamp 约束结果是最终裁决。
 15. 回答“你会什么”时调用 get_capabilities，以运行时注册表为准，不能照提示词罗列不存在的能力。
 16. 仅在用户明确说“记住/忘记/删除偏好”时调用 manage_preferences 写操作；偏好和行程只保留在当前 30 分钟演示会话，不得称为账号级长期记忆。"""
+
+PLAN_PROMPT = """服务端已为本轮请求编译可信任务图。你只能调用 allowedTools 中的工具，并遵循节点依赖；超出范围的调用会被策略核拒绝。任务图如下：\n{plan}"""
 
 
 class DeepSeekError(RuntimeError):
@@ -209,11 +215,13 @@ class AgentService:
         client: DeepSeekClient | None = None,
         navigation: NavigationToolExecutor | None = None,
         memory: SessionMemoryExecutor | None = None,
+        events: EventStore | None = None,
     ) -> None:
         self.store = store
         self.client = client or DeepSeekClient()
         self.navigation = navigation or NavigationToolExecutor()
         self.memory = memory or SessionMemoryExecutor(store)
+        self.events = events or EventStore()
 
     @staticmethod
     def _response(
@@ -226,6 +234,7 @@ class AgentService:
         turns: int,
         total_tokens: int,
         stopped: bool = False,
+        plan: TaskPlan | None = None,
     ) -> dict[str, Any]:
         response: dict[str, Any] = {
             "message": message,
@@ -237,7 +246,11 @@ class AgentService:
             "totalTokens": total_tokens,
             "promptVersion": AGENT_PROMPT_VERSION,
             "toolVersion": TOOL_VERSION,
+            "stateVersion": session.state_version,
+            "occupantRole": session.occupant_role,
         }
+        if plan is not None:
+            response["plan"] = plan.public_dict()
         if stopped:
             response["stopped"] = True
         return response
@@ -326,8 +339,23 @@ class AgentService:
             return confirmation_response
 
         vehicle = session.vehicle
+        plan = compile_task_plan(text)
+        self.store.set_active_plan(session, plan.id)
+        self.events.append(
+            session_id=session.id,
+            plan_id=plan.id,
+            event_type="plan.created",
+            state_version=session.state_version,
+            payload=plan.public_dict(),
+        )
         messages: list[dict[str, Any]] = [
             {"role": "system", "content": SYSTEM_PROMPT},
+            {
+                "role": "system",
+                "content": PLAN_PROMPT.format(
+                    plan=plan.model_dump_json(by_alias=True, exclude={"objective"})
+                ),
+            },
             *[{"role": item["role"], "content": item["content"]} for item in history],
             {"role": "user", "content": text},
         ]
@@ -359,6 +387,7 @@ class AgentService:
                     model=model_name,
                     turns=turn,
                     total_tokens=total_tokens,
+                    plan=plan,
                 )
 
             messages.append(
@@ -408,21 +437,38 @@ class AgentService:
                         self.store.create_sunroof_confirmation(session, target)
                     ),
                 )
-                if name in ONLINE_TOOL_NAMES:
+                task_node = plan.node_for_tool(name)
+                preferred_domain = task_node.domain if task_node else None
+                domain = domain_for_tool(name, preferred_domain)
+                decision = authorize_tool(plan, session.occupant_role, name, tool_input)
+                state_version_before = session.state_version
+                self.events.append(
+                    session_id=session.id,
+                    plan_id=plan.id,
+                    task_id=task_node.id if task_node else None,
+                    event_type="policy.decision",
+                    state_version=state_version_before,
+                    payload={"tool": name, "role": session.occupant_role, **decision.public_dict()},
+                )
+                if not decision.allowed:
+                    execution = ToolExecution(
+                        vehicle=vehicle,
+                        status="blocked",
+                        output={
+                            "executed": False,
+                            "blocked": True,
+                            "reason": decision.message,
+                            "code": decision.code,
+                            "suggestion": decision.suggestion,
+                            "policy": decision.policy,
+                        },
+                    )
+                elif name in ONLINE_TOOL_NAMES:
                     execution = await self.navigation.execute(
-                        name,
-                        tool_input,
-                        vehicle,
-                        session,
-                        tool_context,
+                        name, tool_input, vehicle, session, tool_context
                     )
                 elif name in SESSION_TOOL_NAMES:
-                    execution = self.memory.execute(
-                        name,
-                        tool_input,
-                        session,
-                        tool_context,
-                    )
+                    execution = self.memory.execute(name, tool_input, session, tool_context)
                 else:
                     execution = execute_tool(name, tool_input, vehicle, tool_context)
                 vehicle = execution.vehicle
@@ -449,8 +495,24 @@ class AgentService:
                     input=tool_input,
                     output=execution.output,
                     status=execution.status,
+                    planId=plan.id,
+                    taskId=task_node.id if task_node else None,
+                    domain=domain,
+                    policyCode=decision.code,
+                    stateVersionBefore=state_version_before,
+                    stateVersionAfter=session.state_version,
                 )
                 traces.append(trace)
+                if task_node is not None:
+                    task_node.status = execution.status
+                self.events.append(
+                    session_id=session.id,
+                    plan_id=plan.id,
+                    task_id=task_node.id if task_node else None,
+                    event_type="tool.receipt",
+                    state_version=session.state_version,
+                    payload=trace.public_dict(),
+                )
                 messages.append(
                     {
                         "role": "tool",
@@ -468,4 +530,5 @@ class AgentService:
             turns=MAX_AGENT_TURNS,
             total_tokens=total_tokens,
             stopped=True,
+            plan=plan,
         )

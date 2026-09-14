@@ -14,6 +14,17 @@ def test_health_identifies_python_runtime() -> None:
     assert response.json()["runtime"] == "python"
 
 
+def test_capability_manifest_is_derived_from_runtime_registries() -> None:
+    response = client.get("/api/cabin/capabilities")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["agentCount"] == 1
+    assert payload["toolCount"] == len(payload["tools"]) == 14
+    assert payload["signalCount"] == len(payload["signals"]) == 25
+    assert payload["constraintCount"] == len(payload["constraints"]) == 5
+    assert any(tool["name"] == "control_cabin_device" for tool in payload["tools"])
+
+
 def test_creates_rain_session_with_frontend_shape() -> None:
     response = client.post("/api/cabin/session", json={"scenario": "rain"})
     assert response.status_code == 200

@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from . import __version__
 from .agent import AgentService, DeepSeekClient, DeepSeekError, SessionNotFoundError
+from .capabilities import capability_manifest
 from .reliability import TrajectoryStep, evaluate_trial, load_suite
 from .session import SESSION_TTL_SECONDS, SessionStore
 
@@ -158,6 +159,7 @@ async def root() -> dict[str, object]:
         "version": __version__,
         "docs": "/docs",
         "health": "/api/health",
+        "capabilities": "/api/cabin/capabilities",
     }
 
 
@@ -165,6 +167,13 @@ async def root() -> dict[str, object]:
 @app.get("/api/health")
 async def health() -> dict[str, str]:
     return {"status": "ok", "runtime": "python", "version": __version__}
+
+
+@app.get("/api/cabin/capabilities")
+async def capabilities() -> dict[str, object]:
+    """Return capabilities derived from the executable Python registries."""
+
+    return capability_manifest()
 
 
 @app.post("/api/cabin/session")

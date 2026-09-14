@@ -19,9 +19,9 @@ CabinGuard 围绕可信智能座舱任务闭环完成了以下核心产品实现
 
 - 智能座舱业务场景、交互界面和模拟车辆状态；
 - DeepSeek 意图解析接口及 DeepSeek 多轮 Tool Calling Agent；
-- 10 个座舱领域工具、模拟车控执行器与外部地图适配器；
-- 天窗、后备箱、补能等安全与前置条件；
-- Agent Lab 调用轨迹展示；
+- 14 个座舱领域工具、模拟车控执行器、会话记忆执行器与外部地图适配器；
+- 25 个 VSS 对齐信号，以及天窗、车窗、后备箱、空调等 5 条声明式约束；
+- Agent Lab 调用轨迹与座舱状态展示、System Lab 运行时架构控制台；
 - 15 个三类可靠性任务、Python 五维评分、一致性指标及 JSON 报告导出；
 - PRD、架构说明和评测记录。
 
@@ -31,12 +31,12 @@ CabinGuard 围绕可信智能座舱任务闭环完成了以下核心产品实现
 
 | 层级 | 技术与职责 |
 | --- | --- |
-| 前端 | Next.js 16 App Router、React 19、TypeScript、Tailwind CSS，承载主页、Agent Lab 和评测页 |
+| 前端 | Next.js 16 App Router、React 19、TypeScript、Tailwind CSS，承载主页、Agent Lab、System Lab 和评测页 |
 | 模型服务 | DeepSeek Chat Completions 的结构化意图解析与函数调用；可选 OpenAI Realtime API 语音会话 |
 | Python Agent 后端 | Python 3.11+、FastAPI、Pydantic、HTTPX，承载多轮编排、会话、限流、工具执行和 OpenAPI |
 | Agent 框架 | `@openai/agents` 的 RealtimeAgent 与工具定义，用于可选 Realtime 语音模式 |
 | 兼容服务端 | Next.js Route Handlers、Zod、Undici；未连接 Python API 时提供单服务回退 |
-| 运行状态 | 主页使用 React 内存状态；Agent Lab 使用 30 分钟有效的服务端内存会话；当前没有数据库、Redis 或持久化日志 |
+| 运行状态 | 主页使用 React 内存状态；Agent Lab 使用 30 分钟服务端会话，包含车辆状态、偏好和最近 10 条成功导航回执；当前没有数据库、Redis 或账号级持久化 |
 | 语音能力 | 浏览器 Speech Recognition 做中文语音输入，Speech Synthesis 做结果播报；Realtime 语音是独立可选入口 |
 
 ## 4. 三条运行链路
@@ -57,14 +57,14 @@ CabinGuard 围绕可信智能座舱任务闭环完成了以下核心产品实现
 
 ### 4.2 Agent Lab：DeepSeek 多轮 Tool Calling 链路
 
-`/agent-lab` 是项目最能说明 Agent 能力的入口。浏览器先向 Python/FastAPI 的 `/api/cabin/session` 创建服务端演示会话，后续只提交会话 ID、用户请求及最近 8 条对话历史。服务端把系统提示词、10 个函数 Schema 和用户消息发送给 DeepSeek；模型自主选择函数，Python 服务端从会话读取状态、执行函数并写回会话，再把结果作为 `tool` 消息回传模型。
+`/agent-lab` 是项目最能说明 Agent 能力的入口。浏览器先向 Python/FastAPI 的 `/api/cabin/session` 创建服务端演示会话，后续只提交会话 ID、用户请求及最近 8 条对话历史。服务端把系统提示词、14 个函数 Schema 和用户消息发送给 DeepSeek；模型自主选择函数，Python 服务端从会话读取状态、执行函数并写回会话，再把结果作为 `tool` 消息回传模型。
 
 ```text
 浏览器
   │ 文本、有限会话历史、会话 ID
   ▼
 Python FastAPI /api/cabin/session → /api/deepseek/agent
-  │ 系统提示词 + 10 个函数 Schema
+  │ 系统提示词 + 14 个函数 Schema
   ▼
 DeepSeek 模型
   │ tool_calls
@@ -94,7 +94,7 @@ Agent Lab 还在主链路外侧补充了三类交互上下文：浏览器中文�
 
 ## 5. Agent 的工具系统
 
-核心产品是 1 个任务 Agent。Python 主实现位于 `backend/cabinguard/agent.py`，可选实时语音配置为 `cabinPilotAgent`。它能够调用以下 10 个工具：
+核心产品是 1 个任务 Agent。Python 主实现位于 `backend/cabinguard/agent.py`，可选实时语音配置为 `cabinPilotAgent`。它能够调用以下 14 个工具：
 
 | 工具 | 输入 | 返回/状态改变 | 业务目的与约束 |
 | --- | --- | --- | --- |
@@ -107,7 +107,11 @@ Agent Lab 还在主链路外侧补充了三类交互上下文：浏览器中文�
 | `search_places` | 查询文本、候选数量 | Nominatim 候选 ID、名称、地址与来源 | 用户触发；坐标只保存到服务端会话 |
 | `plan_navigation` | 候选 ID、路线偏好 | OSRM 道路距离、ETA、步骤、备选路线、折线、到达电量 | 显式导航意图、先读状态、先检索、候选绑定、定位同意 |
 | `control_sunroof` | 开度、确认状态 | 更新天窗/遮阳帘，或返回阻止原因 | 降雨阻止；高速必须确认 |
-| `control_trunk` | 开/关 | 返回执行或阻止结果 | 行驶中不允许开启 |
+| `control_trunk` | 开/关 | 更新后备箱状态或返回阻止结果 | 使用显式挡位；非 P 挡不允许开启 |
+| `control_cabin_device` | 设备、区域、动作、值/颜色 | 更新车窗、座椅、氛围灯或除霜状态 | 先读车辆；严格动作配对；声明式拒绝/限幅 |
+| `get_capabilities` | 无 | 实际工具、信号、约束和集成摘要 | 由运行时注册表生成，防止能力幻觉 |
+| `manage_preferences` | remember/list/forget、键值 | 更新或读取当前会话偏好 | 写入/删除需要本轮用户明确授权 |
+| `query_trip_history` | 无 | 最近成功导航形成的会话行程 | 只接受执行回执，最多 10 条 |
 
 所有工具调用都会产生 `Trace`：工具名称、模型参数、工具输出和 `success/blocked` 状态。Agent Lab 把 Trace 展示给用户，评测页也会读取同一字段判断工具链是否符合预期。
 
@@ -130,7 +134,7 @@ Agent Lab 还在主链路外侧补充了三类交互上下文：浏览器中文�
 - Python 主后端使用 Pydantic 严格校验所有工具参数，Next.js 兼容后端使用 Zod；非法类型、范围、枚举和多余字段不会被静默纠正为成功；
 - `set_climate`、`search_charging_stations`、`control_sunroof` 和后备箱开启分别强制校验所需的状态读取前置；
 - `control_sunroof` 在降雨概率不低于 50% 时拒绝打开；在车速不低于 80 km/h 且 `confirmed !== true` 时拒绝打开；
-- `control_trunk` 在车速大于 0 时拒绝打开；
+- `control_trunk` 在显式挡位不是 P 时拒绝打开；高速车窗超过 30% 时限幅，儿童锁开启时拒绝后排开窗；
 - `start_navigation` 同时校验用户明确导航意图、搜索前置和本轮候选目的地；
 - `plan_navigation` 只接受本会话地点候选 ID；浏览器真实起点还需外部算路同意，供应商失败时禁止生成替代假路线；
 - 最终回复没有成功工具副作用作为依据时，服务端会替换无依据的完成表述；
@@ -168,7 +172,7 @@ Reliability Lab 从共享 JSON 加载 15 个 Base、Hallucination、Disambiguati
 
 | 验证项 | 结果 | 说明 |
 | --- | --- | --- |
-| `python -m pytest` | 通过 | 66 条 Python 测试覆盖多轮编排、FastAPI、Pydantic 工具、真实地点/道路协议、定位同意、策略、评分和聚合 |
+| `python -m pytest` | 通过 | 75 条 Python 测试覆盖多轮编排、FastAPI、Pydantic 工具、VSS 约束、记忆、真实地点/道路协议、定位同意、策略、评分和聚合 |
 | `python -m cabinguard demo` | 通过 | 不依赖模型密钥完成 Python 工具读取与写入闭环 |
 | Python FastAPI 冒烟测试 | HTTP 200 | `/api/health` 返回 `runtime=python`，可创建降雨场景会话 |
 | `npm run build` | 通过 | Next.js 编译、类型检查、静态页生成均通过 |
@@ -195,7 +199,7 @@ Reliability Lab 从共享 JSON 加载 15 个 Base、Hallucination、Disambiguati
 2. **只有演示级限流，没有身份认证。** 当前 DeepSeek Agent 路由按来源提供内存窗口限流，但没有用户身份、配额、持久化预算或分布式限流，公开部署仍有 API 成本和滥用风险。
 3. **没有持久化。** 会话、状态和 Trace 不写入数据库，刷新后会丢失；评测报告仅下载到本地。
 4. **Realtime 尚未启用验证。** 当前只有 DeepSeek 主链路可实际演示。
-5. **模型行为评测尚未成为自动门禁。** 确定性规则已有 66 条 Pytest 与 39 条 Vitest；15 个模型任务仍需从页面或 Python CLI 主动运行并保存报告。
+5. **模型行为评测尚未成为自动门禁。** 确定性规则已有 75 条 Pytest 与 39 条 Vitest；15 个模型任务仍需从页面或 Python CLI 主动运行并保存报告。
 6. **跨链路参数不完全一致。** DeepSeek 空调风量为 1–5 档，Realtime 为 1–7 档；高速确认字段分别为 `confirmed` 与 `high_speed_confirmed`。后续接入真实后端前应统一契约。
 7. **确认状态仍不是生产级授权。** 高速天窗确认已绑定会话、动作参数和 2 分钟有效期；生产环境仍应绑定任务 ID、车端签名、用户身份和审计记录。
 8. **文案仍有语义歧义。** 天窗成功路径返回 `sunshade_percent: 100`，但模型曾描述为“遮阳帘保持全闭”；应在产品定义中统一百分比代表“开度”还是“闭合度”，并由前端模板化结果避免模型自行表述。
@@ -205,11 +209,11 @@ Reliability Lab 从共享 JSON 加载 15 个 Base、Hallucination、Disambiguati
 
 ### 可写的项目描述
 
-> 设计并实现 CabinGuard 可信座舱任务 Agent，使用 Python、FastAPI 与 Pydantic 完成多轮编排、会话和 10 个领域工具，构建“意图理解—状态读取—安全校验—工具执行—结果核验”闭环；接入 Nominatim/OSRM 真实地点与道路数据，以会话候选 ID、定位同意和坐标隔离约束导航，并搭建包含 15 个三类任务、五维评分和 Pass 一致性指标的 Reliability Lab。
+> 设计并实现 CabinGuard 可信座舱任务 Agent，使用 Python、FastAPI 与 Pydantic 完成多轮编排、14 个领域工具、25 个 VSS 对齐信号、5 条声明式约束和会话记忆，构建“意图理解—状态读取—安全校验—工具执行—结果核验”闭环；接入 Nominatim/OSRM 真实地点与道路数据，并搭建 System Lab 与包含 15 个三类任务、五维评分和 Pass 一致性指标的 Reliability Lab。
 
 ### 可量化表述
 
-- 完成 10 个领域工具和 5 类核心座舱任务场景；
+- 完成 14 个领域工具和导航、补能、HVAC、车身、座椅、灯光、记忆等能力域；
 - 设计 15 个覆盖明确任务、能力缺失和意图歧义的版本化任务，用同一会话验证多轮确认与补槽；
 - 实现工具链、最终状态、策略、结果依据、不确定性五维确定性评分，以及 Pass^k / Pass@k 聚合；
 - 旧版 10 类任务已完成定向复测；新版任务结果单独留档，不混用统计口径；
@@ -217,7 +221,7 @@ Reliability Lab 从共享 JSON 加载 15 个 Base、Hallucination、Disambiguati
 
 ### 不应写的表述
 
-- “10 Agent 多智能体智能座舱系统”；
+- “14 Agent 多智能体智能座舱系统”；
 - “已接入真实汽车/实时交通/真实充电网络”；
 - “生产级车控平台”或“已量产”；
 - “OpenAI Realtime 语音已稳定上线”；
@@ -234,4 +238,4 @@ Reliability Lab 从共享 JSON 加载 15 个 Base、Hallucination、Disambiguati
 
 ## 12. 60 秒技术讲述顺序
 
-“我把 CabinGuard 做成了一个智能座舱可信任务 Agent，而不是单纯聊天机器人。模型负责多步规划，Python 工具层掌握最终执行权：它会先读车速、天气、电量或空调状态，再按策略执行。普通导航通过实时地点检索绑定候选 ID，再调用道路服务生成路线；精确起点不进入模型回执，外部失败也不会伪造成功。高速开天窗需要会话级确认，降雨开天窗和行驶中开后备箱由工具层阻止。项目有 10 个工具、完整 Trace，以及 15 个可靠性任务、五维评分和 Pass 一致性指标。”
+“我把 CabinGuard 做成了一个智能座舱可信任务 Agent，而不是单纯聊天机器人。模型负责多步规划，Python 工具层掌握最终执行权：14 个工具通过 25 个 VSS 对齐信号和声明式规则执行导航、舒适与车身任务。普通导航绑定实时地点候选再调用道路服务；车辆动作只进入沙箱，高速天窗需要会话确认，雨天天窗、非 P 挡后备箱和儿童锁后排车窗由工具层裁决。System Lab 从运行时清单展示权限、约束和真实/沙箱边界，另有 15 个可靠性任务与五维评分。”

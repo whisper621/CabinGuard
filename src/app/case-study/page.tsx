@@ -1,10 +1,10 @@
 import Link from "next/link";
 
 const metrics = [
-  { value: "4", label: "核心任务场景", note: "舒适度 / 天窗 / 补能 / 后备箱" },
-  { value: "8", label: "领域工具", note: "状态读取、搜索、导航与车控" },
-  { value: "35", label: "确定性测试", note: "安全规则进入 CI" },
-  { value: "10", label: "模型行为用例", note: "工具链、状态、澄清与越权" },
+  { value: "7", label: "能力域", note: "导航 / 补能 / HVAC / 车身 / 座椅 / 灯光 / 记忆" },
+  { value: "14", label: "注册工具", note: "运行时清单，不是静态展示" },
+  { value: "75", label: "Python 测试", note: "安全规则与执行器进入 CI" },
+  { value: "15", label: "模型行为用例", note: "工具链、状态、澄清与越权" },
 ];
 
 const decisions = [
@@ -29,8 +29,8 @@ const decisions = [
 ];
 
 const roadmap = [
-  ["当前 MVP", "模拟车辆状态、服务端工具边界、三类环境、双层评测"],
-  ["下一阶段", "VSS/WebSocket 车辆模拟器、异步动作回执、幂等与审计"],
+  ["当前 v0.5", "真实地点与道路服务、25 个 VSS 对齐信号、声明式约束、会话偏好与行程记忆"],
+  ["下一阶段", "WebSocket 信号流、异步动作回执、幂等、离线语音与持久化审计"],
   ["真实接入前", "用户/车辆身份、权限分级、车端签名、弱网降级与合规验证"],
 ];
 
@@ -46,6 +46,7 @@ export default function CaseStudyPage() {
           <nav className="flex flex-wrap gap-2 text-sm">
             <Link className="rounded-lg border border-white/15 px-3 py-2 hover:bg-white/10" href="/">产品演示</Link>
             <Link className="rounded-lg border border-white/15 px-3 py-2 hover:bg-white/10" href="/agent-lab">Agent Lab</Link>
+            <Link className="rounded-lg border border-violet-300/30 px-3 py-2 text-violet-200 hover:bg-violet-300/10" href="/system-lab">系统架构</Link>
             <Link className="rounded-lg bg-blue-500 px-3 py-2 font-medium text-white hover:bg-blue-400" href="/evaluation">评测证据</Link>
           </nav>
         </div>
@@ -118,8 +119,8 @@ export default function CaseStudyPage() {
           <p className="text-sm font-semibold text-emerald-300">验证方式</p>
           <h2 className="mt-3 text-3xl font-semibold">规则确定性与模型非确定性分层测试</h2>
           <ul className="mt-6 space-y-3 text-sm leading-6 text-slate-300">
-            <li className="rounded-xl border border-white/10 p-4"><strong className="text-white">CI：</strong>35 条不依赖模型的规则测试，覆盖确认、参数、前置、安全、TTL、限流和导航授权。</li>
-            <li className="rounded-xl border border-white/10 p-4"><strong className="text-white">Guarded live eval：</strong>10 类真实模型用例，记录有序工具链、状态、Token、轮次、延迟和失败原因。</li>
+            <li className="rounded-xl border border-white/10 p-4"><strong className="text-white">CI：</strong>75 条 Python 测试，覆盖确认、参数、VSS 约束、会话记忆、TTL、限流和导航授权。</li>
+            <li className="rounded-xl border border-white/10 p-4"><strong className="text-white">Guarded live eval：</strong>15 类真实模型用例，记录有序工具链、状态、Token、轮次、延迟和失败原因。</li>
             <li className="rounded-xl border border-white/10 p-4"><strong className="text-white">可观测：</strong>所有工具输入、输出和 blocked/success 状态在 Agent Lab 中可展开检查。</li>
           </ul>
         </div>
@@ -136,7 +137,7 @@ export default function CaseStudyPage() {
       <section className="mx-auto max-w-6xl px-5 pb-16">
         <div className="rounded-3xl border border-red-300/20 bg-red-300/5 p-7">
           <p className="text-sm font-semibold text-red-300">明确边界</p>
-          <p className="mt-3 leading-7 text-slate-300">当前状态、天气、充电站和车控结果均为模拟数据；没有真实 CAN/VSS、地图、硬件、用户身份或量产审计。它证明的是 Agent 产品策略、工具编排、安全边界和评测方法，不是生产级车辆控制能力。</p>
+          <p className="mt-3 leading-7 text-slate-300">当前真实联网能力包括 DeepSeek 规划、浏览器定位、OpenStreetMap 地点检索与 OSRM 道路算路；天气、充电站目录和车辆执行仍是沙箱数据。系统没有连接 CAN 总线、OEM 账户、量产权限或车端签名，因此证明的是 Agent 产品策略、跨域编排、安全边界和评测方法，不代表生产级车辆控制。</p>
         </div>
       </section>
     </main>

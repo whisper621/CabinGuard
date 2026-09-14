@@ -52,6 +52,7 @@ _PLACE_SEARCH = re.compile(
 _SIDE_EFFECT = re.compile(
     r"已(?:经)?(?:将|为|帮|开始|完成|打开|关闭|设置|切换)|导航已开始|操作成功"
 )
+_MEMORY_WRITE = re.compile(r"记住|记一下|以后.*(?:设置|偏好|喜欢)|保存.*偏好|忘掉|忘记|删除.*偏好")
 
 
 def _normalize(text: str) -> str:
@@ -75,6 +76,12 @@ def is_navigation_requested(text: str) -> bool:
 
 def is_place_search_requested(text: str) -> bool:
     return is_navigation_requested(text) or bool(_PLACE_SEARCH.search(text))
+
+
+def is_memory_write_requested(text: str) -> bool:
+    """Only explicit language authorizes session-memory mutation."""
+
+    return bool(_MEMORY_WRITE.search(text))
 
 
 def ground_agent_message(message: str, traces: Sequence[Trace]) -> str:

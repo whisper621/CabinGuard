@@ -139,7 +139,7 @@ def test_blocks_trunk_while_moving() -> None:
 
 
 def test_allows_trunk_while_parked() -> None:
-    parked = vehicle().model_copy(update={"speed": 0})
+    parked = vehicle().model_copy(update={"speed": 0, "gear": "P"})
     result = execute_tool(
         "control_trunk",
         {"action": "open"},
@@ -147,6 +147,7 @@ def test_allows_trunk_while_parked() -> None:
         ToolContext(prior_successful_tools=("get_vehicle_state",)),
     )
     assert result.status == "success"
+    assert result.vehicle.trunk_open is True
 
 
 def test_filters_charging_stations_by_detour() -> None:

@@ -513,6 +513,7 @@ export default function CabinDemo() {
             <Badge tone="green">● 本地演示已就绪</Badge>
             <Badge tone={aiStatusView.tone}>{aiStatusView.label}</Badge>
             <a href="/case-study" className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">产品案例</a>
+            <a href="/system-lab" className="rounded-xl border border-violet-200 bg-violet-50 px-3.5 py-2 text-sm font-medium text-violet-700 hover:bg-violet-100">系统架构</a>
             <button onClick={() => setVoiceOutputEnabled((value) => !value)} className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">
               语音播报：{voiceOutputEnabled ? "开" : "关"}
             </button>

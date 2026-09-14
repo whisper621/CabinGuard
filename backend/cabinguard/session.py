@@ -29,6 +29,8 @@ class CabinSession:
     expires_at: float
     pending_action: PendingSunroofAction | None = None
     place_candidates: dict[str, dict[str, object]] = field(default_factory=dict)
+    preferences: dict[str, str] = field(default_factory=dict)
+    trip_history: list[dict[str, object]] = field(default_factory=list)
 
 
 @dataclass
@@ -58,9 +60,11 @@ def build_scenario(
             }
         )
     if scenario == "rain":
-        return vehicle.model_copy(update={"speed": 0, "weather": "小雨", "rain_probability": 70})
+        return vehicle.model_copy(
+            update={"speed": 0, "gear": "P", "weather": "小雨", "rain_probability": 70}
+        )
     if scenario == "moving":
-        return vehicle.model_copy(update={"speed": 35})
+        return vehicle.model_copy(update={"speed": 35, "gear": "D"})
     return vehicle
 
 
@@ -140,6 +144,26 @@ class SessionStore:
             session.vehicle = vehicle
             session.expires_at = time.time() + SESSION_TTL_SECONDS
             self._sessions[session.id] = session
+
+    def record_trip(self, session: CabinSession, trip: dict[str, object]) -> None:
+        with self._lock:
+            session.trip_history.append(trip)
+            session.trip_history = session.trip_history[-10:]
+            session.expires_at = time.time() + SESSION_TTL_SECONDS
+            self._sessions[session.id] = session
+
+    def set_preference(self, session: CabinSession, key: str, value: str) -> None:
+        with self._lock:
+            session.preferences[key] = value
+            session.expires_at = time.time() + SESSION_TTL_SECONDS
+            self._sessions[session.id] = session
+
+    def forget_preference(self, session: CabinSession, key: str) -> bool:
+        with self._lock:
+            removed = session.preferences.pop(key, None) is not None
+            session.expires_at = time.time() + SESSION_TTL_SECONDS
+            self._sessions[session.id] = session
+            return removed
 
     def create_sunroof_confirmation(self, session: CabinSession, target_percent: int) -> None:
         with self._lock:

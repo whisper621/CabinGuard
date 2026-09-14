@@ -8,13 +8,16 @@
 | --- | --- |
 | `cabinguard/api.py` | FastAPI、CORS、请求校验、限流与 OpenAPI |
 | `cabinguard/agent.py` | DeepSeek 多轮 Tool Calling、工具结果回传、轮次/超时/重试 |
-| `cabinguard/tools.py` | 10 个 Pydantic 工具 Schema、前置条件和动作执行 |
+| `cabinguard/tools.py` | 14 个 Pydantic 工具 Schema、前置条件和动作执行 |
+| `cabinguard/signals.py` | 25 个 VSS 对齐信号、分段 glob 和 5 条声明式安全约束 |
+| `cabinguard/capabilities.py` | 由真实注册表生成工具、信号、约束、集成与执行图清单 |
+| `cabinguard/memory.py` | 明确授权的会话偏好与成功导航行程回执 |
 | `cabinguard/navigation.py` | Nominatim 地点检索、OSRM 道路算路、缓存限流和坐标隔离 |
 | `cabinguard/policy.py` | 高风险确认、导航意图和无依据成功反馈拦截 |
 | `cabinguard/session.py` | 车辆模拟状态、30 分钟会话、2 分钟一次性确认和限流 |
 | `cabinguard/reliability.py` | 共享任务加载、多轮运行、五维确定性评分和 Pass 指标 |
 | `cabinguard/cli.py` | `serve`、`demo`、`chat`、`benchmark` 四个 Python 入口 |
-| `tests/` | 66 条多轮 Agent、地图、确定性工具、API 与评测测试 |
+| `tests/` | 75 条多轮 Agent、地图、工具、约束、记忆、API 与评测测试 |
 
 ## 运行
 
@@ -55,6 +58,7 @@ python -m ruff check backend
 ## API
 
 - `GET /api/health`：运行状态与 Python 版本标识。
+- `GET /api/cabin/capabilities`：读取运行时工具、VSS 信号、声明式约束、集成与执行图。
 - `POST /api/cabin/session`：创建 `default`、`rain` 或 `moving` 演示会话。
 - `POST /api/deepseek/agent`：执行多轮 Tool Calling 任务。
 - `POST /api/deepseek/interpret`：为首页提供结构化意图解析。

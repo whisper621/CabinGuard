@@ -54,7 +54,7 @@
 - 流程：按 Base / Hallucination / Disambiguation 选择共享任务 → 每试次创建独立会话 → 在同一会话执行多轮输入 → 五维评分 → 聚合试次通过率、Pass^k、Pass@k → 导出版本化 JSON。
 - 外部副作用：产生 API 成本；因此不是默认 CI 门禁。
 - 成本护栏：全量 15 个任务重复 3 次必须显式解锁；面试演示默认按单一类型运行。
-- CI 门禁：运行 Ruff、66 条 Python 测试、39 条 TypeScript 兼容测试，以及前端 lint、类型检查和生产构建；均不依赖外部模型。
+- CI 门禁：运行 Ruff、75 条 Python 测试、39 条 TypeScript 兼容测试，以及前端 lint、类型检查和生产构建；均不依赖外部模型。
 
 ## 6. Agent Lab 浏览器语音与定位
 

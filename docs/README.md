@@ -20,6 +20,7 @@
 | [CAR-Bench 对比](CAR_BENCH_COMPARISON.md) | Python 技术栈、项目定位差异与可借鉴的评测方向 | AI 产品、技术面试官 |
 | [Reliability Lab 升级决策](RELIABILITY_LAB_UPGRADE.md) | 三角色功能发散、Top 5 优先级、实现范围与非目标 | 产品、研发、评测 |
 | [真实导航与驾驶舱升级](LIVE_NAVIGATION_UPGRADE.md) | 公开项目研究、15 个升级方向、真实地图实现与能力边界 | 产品、座舱、研发 |
+| [参考架构升级记录](REFERENCE_ARCHITECTURE_UPGRADE.md) | 参考仓库许可核查、意图/实现差距、三视角创意与 v0.5 落点 | 产品、座舱、研发、面试官 |
 
 ## 评测与证据
 
@@ -41,13 +42,14 @@
 1. [PRD](PRD.md) 的问题和场景。
 2. [决策日志](DECISION_LOG.md) 的关键取舍。
 3. [系统架构](ARCHITECTURE.md) 的信任边界与安全策略。
-4. [评测方案](EVALUATION.md) 的成功与越权断言。
+4. [参考架构升级记录](REFERENCE_ARCHITECTURE_UPGRADE.md) 的取舍与证据。
+5. [评测方案](EVALUATION.md) 的成功与越权断言。
 
 ### 研发接手：20 分钟
 
 1. [技术报告](TECHNICAL_REPORT.md) 的运行链路。
 2. [工程交付地图](../documentation/architecture.md)。
-3. Python 主后端：`backend/cabinguard/agent.py`、`tools.py`、`policy.py`、`session.py`。
+3. Python 主后端：`backend/cabinguard/agent.py`、`tools.py`、`signals.py`、`memory.py`、`capabilities.py`。
 4. TypeScript 产品层：`src/app/`；兼容后端：`src/app/lib/` 与 `src/app/api/`。
 5. `python -m pytest` 与 `npm run check` 验证本地环境。
 

@@ -21,12 +21,52 @@ class RouteAlternative(BaseModel):
     eta_minutes: int = Field(ge=0, alias="etaMinutes")
 
 
+class WindowState(BaseModel):
+    """Window opening percentages by seat row and side."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    driver: int = Field(0, ge=0, le=100)
+    passenger: int = Field(0, ge=0, le=100)
+    rear_left: int = Field(0, ge=0, le=100, alias="rearLeft")
+    rear_right: int = Field(0, ge=0, le=100, alias="rearRight")
+
+
+class SeatComfortState(BaseModel):
+    """Heating and ventilation levels exposed by the demo seat controller."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    driver_heating: int = Field(0, ge=0, le=3, alias="driverHeating")
+    passenger_heating: int = Field(0, ge=0, le=3, alias="passengerHeating")
+    rear_left_heating: int = Field(0, ge=0, le=3, alias="rearLeftHeating")
+    rear_right_heating: int = Field(0, ge=0, le=3, alias="rearRightHeating")
+    driver_ventilation: int = Field(0, ge=0, le=3, alias="driverVentilation")
+    passenger_ventilation: int = Field(0, ge=0, le=3, alias="passengerVentilation")
+    rear_left_ventilation: int = Field(0, ge=0, le=3, alias="rearLeftVentilation")
+    rear_right_ventilation: int = Field(0, ge=0, le=3, alias="rearRightVentilation")
+
+
+class AmbientLightState(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    enabled: bool = False
+    color: Literal["ice_blue", "warm_orange", "violet", "white"] = "ice_blue"
+    brightness: int = Field(50, ge=0, le=100)
+
+
+class DefrostState(BaseModel):
+    front: bool = False
+    rear: bool = False
+
+
 class VehicleState(BaseModel):
     """Trusted server-side state for the simulated vehicle."""
 
     model_config = ConfigDict(populate_by_name=True)
 
     speed: float = 82
+    gear: Literal["P", "R", "N", "D"] = "D"
     battery: float = 38
     range: float = 176
     cabin_temperature: float = Field(26.5, alias="cabinTemperature")
@@ -35,6 +75,14 @@ class VehicleState(BaseModel):
     circulation: Literal["内循环", "外循环"] = "内循环"
     sunroof: int = 0
     sunshade: int = 0
+    windows: WindowState = Field(default_factory=WindowState)
+    seats: SeatComfortState = Field(default_factory=SeatComfortState)
+    ambient_light: AmbientLightState = Field(
+        default_factory=AmbientLightState, alias="ambientLight"
+    )
+    defrost: DefrostState = Field(default_factory=DefrostState)
+    child_lock: bool = Field(False, alias="childLock")
+    trunk_open: bool = Field(False, alias="trunkOpen")
     weather: str = "多云"
     rain_probability: float = Field(20, alias="rainProbability")
     current_location: str = Field("京承高速模拟起点", alias="currentLocation")

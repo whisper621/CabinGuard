@@ -8,7 +8,7 @@ import LiveRouteMap from "./LiveRouteMap";
 type GeoPoint = { latitude: number; longitude: number };
 type RouteAlternative = { label: string; distanceKm: number; etaMinutes: number };
 type VehicleState = {
-  speed: number; battery: number; range: number; cabinTemperature: number;
+  speed: number; gear: "P" | "R" | "N" | "D"; battery: number; range: number; cabinTemperature: number;
   targetTemperature: number; fanLevel: number; circulation: "内循环" | "外循环";
   sunroof: number; sunshade: number; weather: string; rainProbability: number;
   currentLocation: string; latitude: number; longitude: number;
@@ -18,6 +18,10 @@ type VehicleState = {
   routePolyline: GeoPoint[]; routeProvider: string; routeDataFreshness: string;
   routeSteps: string[]; routeAlternatives: RouteAlternative[]; navigationUrl: string | null;
   estimatedArrivalBattery: number | null;
+  windows: { driver: number; passenger: number; rearLeft: number; rearRight: number };
+  seats: { driverHeating: number; passengerHeating: number; rearLeftHeating: number; rearRightHeating: number; driverVentilation: number; passengerVentilation: number; rearLeftVentilation: number; rearRightVentilation: number };
+  ambientLight: { enabled: boolean; color: "ice_blue" | "warm_orange" | "violet" | "white"; brightness: number };
+  defrost: { front: boolean; rear: boolean }; childLock: boolean; trunkOpen: boolean;
 };
 type CabinScenario = "default" | "rain" | "moving";
 type BrowserLocation = { latitude: number; longitude: number; accuracyMeters?: number; allowExternalRouting?: boolean };
@@ -37,7 +41,7 @@ type AgentResponse = {
 };
 
 const initialVehicle: VehicleState = {
-  speed: 82, battery: 38, range: 176, cabinTemperature: 26.5, targetTemperature: 24,
+  speed: 82, gear: "D", battery: 38, range: 176, cabinTemperature: 26.5, targetTemperature: 24,
   fanLevel: 2, circulation: "内循环", sunroof: 0, sunshade: 0, weather: "多云",
   rainProbability: 20, currentLocation: "京承高速模拟起点", latitude: 40.0415,
   longitude: 116.4836, locationSource: "simulated", locationAccuracyMeters: null,
@@ -45,8 +49,12 @@ const initialVehicle: VehicleState = {
   destinationLongitude: null, routeDistanceKm: null, routeEtaMinutes: null,
   routePolyline: [], routeProvider: "未启动", routeDataFreshness: "—", routeSteps: [],
   routeAlternatives: [], navigationUrl: null, estimatedArrivalBattery: null,
+  windows: { driver: 0, passenger: 0, rearLeft: 0, rearRight: 0 },
+  seats: { driverHeating: 0, passengerHeating: 0, rearLeftHeating: 0, rearRightHeating: 0, driverVentilation: 0, passengerVentilation: 0, rearLeftVentilation: 0, rearRightVentilation: 0 },
+  ambientLight: { enabled: false, color: "ice_blue", brightness: 50 },
+  defrost: { front: false, rear: false }, childLock: false, trunkOpen: false,
 };
-const prompts = ["导航到昌平区政府", "导航到昌平区政府，同时把空调调到23度并切换外循环", "电量不多了，找个顺路快充并导航", "行驶中帮我打开后备箱"];
+const prompts = ["导航到昌平区政府，同时把空调调到23度", "把主驾车窗打开一半，再开2挡座椅通风", "把氛围灯调成紫色、亮度40%", "记住我喜欢22度外循环", "你现在支持哪些能力？"];
 const scenarioOptions: Array<{ value: CabinScenario; label: string; hint: string }> = [
   { value: "default", label: "高速巡航", hint: "82 km/h" },
   { value: "rain", label: "雨天驻车", hint: "P 挡 · 70%" },
@@ -111,7 +119,7 @@ export default function AgentLab() {
     const response = await fetch(cabinApiUrl("/api/cabin/session"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ scenario: nextScenario, ...(location ? { location } : {}) }) });
     const data = await response.json() as { sessionId?: string; vehicle?: VehicleState; error?: { message?: string } };
     if (!response.ok || !data.sessionId || !data.vehicle) throw new Error(data.error?.message || "无法创建演示会话");
-    setSessionId(data.sessionId); setVehicle(data.vehicle);
+    setSessionId(data.sessionId); setVehicle({ ...initialVehicle, ...data.vehicle, windows: { ...initialVehicle.windows, ...data.vehicle.windows }, seats: { ...initialVehicle.seats, ...data.vehicle.seats }, ambientLight: { ...initialVehicle.ambientLight, ...data.vehicle.ambientLight }, defrost: { ...initialVehicle.defrost, ...data.vehicle.defrost } });
   };
 
   useEffect(() => {
@@ -171,10 +179,19 @@ export default function AgentLab() {
   };
 
   return <main className="min-h-screen bg-[#070b14] text-slate-100">
-    <header className="sticky top-0 z-[1001] border-b border-white/10 bg-[#080d18]/95 backdrop-blur-xl"><div className="mx-auto flex max-w-[1720px] flex-wrap items-center justify-between gap-4 px-5 py-4 xl:px-8"><div className="flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-cyan-400 font-black text-slate-950">CG</span><div><div className="flex flex-wrap items-center gap-2"><h1 className="text-lg font-semibold tracking-tight">CabinGuard OS</h1><span className="rounded-full border border-cyan-400/25 bg-cyan-400/10 px-2.5 py-1 text-xs font-medium text-cyan-300">1 Agent · 10 Tools</span><span className={`rounded-full border px-2.5 py-1 text-xs font-medium ${usesExternalCabinApi ? "border-emerald-400/25 bg-emerald-400/10 text-emerald-300" : "border-amber-400/25 bg-amber-400/10 text-amber-300"}`}>{usesExternalCabinApi ? "Python Core · Live Maps" : "Next Fallback · 启动 Python 后开放真实算路"}</span></div><p className="mt-0.5 text-xs text-slate-500">驾驶任务规划 / 真实地点检索 / 策略执行 / 可复核轨迹</p></div></div><div className="flex flex-wrap items-center gap-2 text-sm"><Link className="rounded-lg px-3 py-2 text-slate-400 hover:bg-white/5 hover:text-white" href="/">稳定演示</Link><Link className="rounded-lg px-3 py-2 text-slate-400 hover:bg-white/5 hover:text-white" href="/evaluation">可靠性评测</Link><Link className="rounded-lg px-3 py-2 text-slate-400 hover:bg-white/5 hover:text-white" href="/case-study">产品案例</Link><button className="rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-slate-200 hover:bg-white/10" onClick={() => void reset()}>重置会话</button></div></div></header>
+    <header className="sticky top-0 z-[1001] border-b border-white/10 bg-[#080d18]/95 backdrop-blur-xl"><div className="mx-auto flex max-w-[1720px] flex-wrap items-center justify-between gap-4 px-5 py-4 xl:px-8"><div className="flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-cyan-400 font-black text-slate-950">CG</span><div><div className="flex flex-wrap items-center gap-2"><h1 className="text-lg font-semibold tracking-tight">CabinGuard OS</h1><span className="rounded-full border border-cyan-400/25 bg-cyan-400/10 px-2.5 py-1 text-xs font-medium text-cyan-300">1 Agent · 14 Tools · 25 Signals</span><span className={`rounded-full border px-2.5 py-1 text-xs font-medium ${usesExternalCabinApi ? "border-emerald-400/25 bg-emerald-400/10 text-emerald-300" : "border-amber-400/25 bg-amber-400/10 text-amber-300"}`}>{usesExternalCabinApi ? "Python Core · Live Maps" : "Next Fallback · 启动 Python 后开放真实算路"}</span></div><p className="mt-0.5 text-xs text-slate-500">驾驶任务规划 / 真实地点检索 / 策略执行 / 可复核轨迹</p></div></div><div className="flex flex-wrap items-center gap-2 text-sm"><Link className="rounded-lg px-3 py-2 text-violet-300 hover:bg-violet-400/10 hover:text-white" href="/system-lab">系统架构</Link><Link className="rounded-lg px-3 py-2 text-slate-400 hover:bg-white/5 hover:text-white" href="/">稳定演示</Link><Link className="rounded-lg px-3 py-2 text-slate-400 hover:bg-white/5 hover:text-white" href="/evaluation">可靠性评测</Link><Link className="rounded-lg px-3 py-2 text-slate-400 hover:bg-white/5 hover:text-white" href="/case-study">产品案例</Link><button className="rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-slate-200 hover:bg-white/10" onClick={() => void reset()}>重置会话</button></div></div></header>
 
     <section className="mx-auto grid max-w-[1720px] gap-5 px-5 py-5 xl:grid-cols-[minmax(0,1fr)_430px] xl:px-8"><div className="min-w-0 space-y-5">
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6"><Metric label="Speed" value={`${vehicle.speed} km/h`} accent="text-cyan-300" /><Metric label="Battery" value={`${vehicle.battery}%`} accent={vehicle.battery < 20 ? "text-amber-300" : "text-emerald-300"} /><Metric label="Range" value={`${vehicle.range} km`} /><Metric label="Cabin" value={`${vehicle.cabinTemperature}℃`} /><Metric label="Climate" value={`${vehicle.targetTemperature}℃ · ${vehicle.fanLevel}档`} /><Metric label="Weather" value={`${vehicle.weather} · ${vehicle.rainProbability}%`} /></div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6"><Metric label="Speed / Gear" value={`${vehicle.speed} km/h · ${vehicle.gear}`} accent="text-cyan-300" /><Metric label="Battery" value={`${vehicle.battery}%`} accent={vehicle.battery < 20 ? "text-amber-300" : "text-emerald-300"} /><Metric label="Range" value={`${vehicle.range} km`} /><Metric label="Cabin" value={`${vehicle.cabinTemperature}℃`} /><Metric label="Climate" value={`${vehicle.targetTemperature}℃ · ${vehicle.fanLevel}档`} /><Metric label="Weather" value={`${vehicle.weather} · ${vehicle.rainProbability}%`} /></div>
+
+      <section className="rounded-3xl border border-white/10 bg-[#0b1220] p-5"><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-semibold">座舱域实时状态</h2><p className="mt-1 text-sm text-slate-500">由 Python 车辆沙箱回执驱动 · 可通过自然语言组合控制</p></div><span className="rounded-full border border-violet-400/20 bg-violet-400/[0.07] px-3 py-1 text-xs text-violet-300">VSS-aligned</span></div><div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">{[
+        ["车窗", `主 ${vehicle.windows.driver}% · 副 ${vehicle.windows.passenger}% · 后 ${vehicle.windows.rearLeft}%/${vehicle.windows.rearRight}%`],
+        ["座椅加热", `主 ${vehicle.seats.driverHeating}挡 · 副 ${vehicle.seats.passengerHeating}挡`],
+        ["座椅通风", `主 ${vehicle.seats.driverVentilation}挡 · 副 ${vehicle.seats.passengerVentilation}挡`],
+        ["氛围灯", vehicle.ambientLight.enabled ? `${vehicle.ambientLight.color} · ${vehicle.ambientLight.brightness}%` : "关闭"],
+        ["前/后除霜", `${vehicle.defrost.front ? "ON" : "OFF"} / ${vehicle.defrost.rear ? "ON" : "OFF"}`],
+        ["车身安全", `儿童锁 ${vehicle.childLock ? "ON" : "OFF"} · 尾门 ${vehicle.trunkOpen ? "开" : "关"}`],
+      ].map(([label, value]) => <div key={label} className="rounded-xl border border-white/[0.07] bg-white/[0.03] p-3"><p className="text-xs text-slate-500">{label}</p><p className="mt-2 text-sm font-medium text-slate-200">{value}</p></div>)}</div></section>
 
       <section className="overflow-hidden rounded-3xl border border-white/10 bg-[#0b1220] shadow-2xl shadow-black/20"><div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-5 py-4"><div><div className="flex items-center gap-2"><span className={`h-2.5 w-2.5 rounded-full ${hasLiveRoute ? "animate-pulse bg-emerald-400" : "bg-slate-600"}`} /><h2 className="font-semibold">实时道路导航</h2><span className="text-xs text-slate-500">{vehicle.routeProvider}</span></div><p className="mt-1 text-sm text-slate-400">{vehicle.destination === "未设置" ? "说出任意地址或地点，Agent 将检索并规划可驾驶路线" : `${vehicle.currentLocation} → ${vehicle.destination}`}</p></div><div className="flex flex-wrap items-center gap-2"><div className="flex rounded-xl border border-white/10 bg-black/20 p-1">{scenarioOptions.map((option) => <button key={option.value} disabled={busy} title={option.hint} onClick={() => void changeScenario(option.value)} className={`rounded-lg px-3 py-2 text-xs transition ${scenario === option.value ? "bg-white/10 text-white" : "text-slate-500 hover:text-slate-200"}`}>{option.label}</button>)}</div><button type="button" disabled={busy || locationBusy} onClick={useCurrentLocation} className="rounded-xl bg-blue-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-blue-500/20 hover:bg-blue-400 disabled:opacity-50">{locationBusy ? "正在定位…" : vehicle.locationSource === "browser_geolocation" ? "已授权真实位置" : "授权定位并用于算路"}</button></div></div>
         <div className="relative h-[480px]"><LiveRouteMap latitude={vehicle.latitude} longitude={vehicle.longitude} destinationLatitude={vehicle.destinationLatitude} destinationLongitude={vehicle.destinationLongitude} destination={vehicle.destination} routePolyline={vehicle.routePolyline} />

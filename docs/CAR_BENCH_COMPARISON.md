@@ -27,7 +27,7 @@
 | --- | --- | --- |
 | 产品定位 | Agent 可靠性 benchmark | 可交互的可信智能座舱任务 Agent MVP |
 | 主要用户 | 研究者、Agent 开发者、模型评测者 | 驾驶者；以及座舱产品、算法、安全和工程团队 |
-| 核心产物 | 合成任务、模拟用户、58 个工具、19 类策略、自动评分 | Python Agent API、10 个领域工具、真实地点/道路适配器、服务端安全执行器、产品 UI、15 任务 Reliability Lab |
+| 核心产物 | 合成任务、模拟用户、58 个工具、19 类策略、自动评分 | Python Agent API、14 个领域工具、VSS 对齐信号/约束、真实地点/道路适配器、产品 UI、15 任务 Reliability Lab |
 | 主要语言 | Python；少量 HTML | Python/FastAPI Agent 后端 + TypeScript/Next.js 产品前端 |
 | 重点指标 | Pass^k、Pass@k、动作/策略/澄清/能力边界评分 | 五维评分、试次通过率、Pass^k、Pass@k、延迟、Token 与失败解释 |
 | 展示价值 | 研究深度、评测规模和一致性分析 | 产品定义、交互取舍、可信执行、工程闭环和跨职能落地 |
@@ -39,19 +39,19 @@ CabinGuard 没有把整个仓库机械重写成 Python。浏览器界面继续�
 
 - FastAPI 与 OpenAPI 接口；
 - DeepSeek 多轮 Tool Calling 循环；
-- 10 个 Pydantic 严格工具 Schema；
+- 14 个 Pydantic 严格工具 Schema；
 - 服务端模拟车辆状态、TTL 和来源限流；
 - 高速天窗的一次性确认状态机；
 - 导航显式授权、工具读取前置和执行结果依据校验；
 - 15 个 Base / Hallucination / Disambiguation 任务的共享 JSON Schema；
 - Python 多轮运行器、五维确定性评分器、Pass^k / Pass@k 聚合与版本化报告；
-- 66 条 Python Agent、地图、工具、策略、会话、API 与评测测试。
+- 75 条 Python Agent、地图、工具、VSS 约束、记忆、策略、API 与评测测试。
 
 这使项目可以准确表述为“Python Agent 后端 + Next.js 产品前端”，也能直接通过 `python -m cabinguard` 运行，而不需要伪装成全 Python 仓库。
 
 ## 5. 本轮吸收的方法与原创实现
 
-CabinGuard 吸收了“按不确定性类型拆任务”和“重复运行观察一致性”这两类评测思想，但没有复制 CAR-Bench 的代码、任务数据、工具定义或评分实现。任务均围绕 CabinGuard 自己的 10 个座舱工具、安全状态机和产品场景重新定义，评分器也是面向本项目状态与 Trace 独立实现。
+CabinGuard 吸收了“按不确定性类型拆任务”和“重复运行观察一致性”这两类评测思想，但没有复制 CAR-Bench 的代码、任务数据、工具定义或评分实现。任务均围绕 CabinGuard 自己的座舱工具、安全状态机和产品场景重新定义，评分器也是面向本项目状态与 Trace 独立实现。
 
 已完成：
 

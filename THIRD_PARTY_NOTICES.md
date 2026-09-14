@@ -14,6 +14,22 @@ Copyright (c) 2025 OpenAI
 
 相关许可条款保留在根目录 [LICENSE](LICENSE) 中。
 
+## cockpit-agent-sim
+
+`backend/cabinguard/signals.py` 的分段 glob 匹配语义与声明式约束数据结构改编自 [yancent-dao/cockpit-agent-sim](https://github.com/yancent-dao/cockpit-agent-sim) 的 MIT 许可实现；CabinGuard 在 Python 中重新实现运行逻辑，并增加了本项目的 VSS 对齐信号、车窗/天窗/后备箱/空调约束及机器可读裁决。
+
+原始版权声明：
+
+```text
+Copyright (c) 2026 yancent
+```
+
+原项目完整 MIT 条款保留在 [licenses/cockpit-agent-sim-MIT.txt](licenses/cockpit-agent-sim-MIT.txt)。System Lab 与 AgentLab 的 React 页面为 CabinGuard 独立实现，参考的是其“执行与展示分离、工具注册表、信号目录、权限分层”的公开产品思想，没有复制原页面源码。
+
+## p1-cabin-agent 研究边界
+
+[Eliclx/p1-cabin-agent](https://github.com/Eliclx/p1-cabin-agent) 的 README 将项目标为“私有项目”，仓库未提供公开开源许可证。因此 CabinGuard **没有复制或改编其代码**。本项目仅研究其公开展示的多意图编排、槽位延续、黑板与行程记忆思路，并以 CabinGuard 既有 FastAPI/DeepSeek 架构独立实现会话偏好、行程回执和执行图。
+
 ## npm 依赖
 
 运行时与开发依赖分别在 `package.json` 和 `package-lock.json` 中锁定，包括 Next.js、React、TypeScript、Zod、Vitest、OpenAI Agents SDK、OpenAI Node SDK 与 Undici 等。每个依赖继续适用其自身许可证；发布或再分发前应按锁文件版本复核许可证清单。

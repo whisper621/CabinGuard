@@ -27,17 +27,21 @@ describe("cabin session state", () => {
       latitude: 31.2304,
       longitude: 121.4737,
       accuracyMeters: 18,
+      allowExternalRouting: true,
     });
     expect(session.vehicle).toMatchObject({
       latitude: 31.2304,
       longitude: 121.4737,
       locationSource: "browser_geolocation",
       locationAccuracyMeters: 18,
+      externalRoutingConsent: true,
     });
   });
 
   it("validates browser location ranges and extra fields", () => {
     expect(isBrowserLocation({ latitude: 31, longitude: 121 })).toBe(true);
+    expect(isBrowserLocation({ latitude: 31, longitude: 121, allowExternalRouting: true })).toBe(true);
+    expect(isBrowserLocation({ latitude: 31, longitude: 121, allowExternalRouting: "yes" })).toBe(false);
     expect(isBrowserLocation({ latitude: 91, longitude: 121 })).toBe(false);
     expect(isBrowserLocation({ latitude: 31, longitude: 121, trusted: true })).toBe(false);
   });

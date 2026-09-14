@@ -19,10 +19,19 @@ const vehicleFixture = (): CabinVehicleState => ({
   longitude: 116.4836,
   locationSource: "simulated",
   locationAccuracyMeters: null,
+  externalRoutingConsent: false,
   destination: "未设置",
+  destinationLatitude: null,
+  destinationLongitude: null,
   routeDistanceKm: null,
   routeEtaMinutes: null,
   routePolyline: [],
+  routeProvider: "未启动",
+  routeDataFreshness: "—",
+  routeSteps: [],
+  routeAlternatives: [],
+  navigationUrl: null,
+  estimatedArrivalBattery: null,
 });
 
 describe("executeCabinTool", () => {

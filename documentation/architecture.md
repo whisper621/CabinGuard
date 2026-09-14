@@ -16,7 +16,7 @@ CabinGuard 是智能座舱可信任务 Agent MVP。它用模拟车辆和充电�
 | 层级 | 实现 | 入口 |
 | --- | --- | --- |
 | 产品 UI | Next.js、React、TypeScript、Tailwind | `/` |
-| Tool Calling 实验台 | DeepSeek Chat Completions、浏览器语音/定位、路线示意 | `/agent-lab` |
+| Tool Calling 实验台 | DeepSeek Chat Completions、浏览器语音/定位、真实道路地图、工具与策略轨迹 | `/agent-lab` |
 | Reliability Lab | 页面或 Python CLI 驱动真实 Agent API；Python 五维评分与一致性聚合 | `/evaluation`、`evaluation/cases.json`、`backend/cabinguard/reliability.py` |
 | 核心语音 | Web Speech API 中文识别与播报 | `/agent-lab` |
 | 可选实时语音 | OpenAI Realtime Agents | `/realtime` |
@@ -57,7 +57,7 @@ CabinGuard 是智能座舱可信任务 Agent MVP。它用模拟车辆和充电�
 | Realtime 与 DeepSeek 尚未共用执行器 | `src/app/agentConfigs/cabinPilot.ts` | 明确标记为后续统一项，不把 Realtime 当生产安全链路 |
 | 来源 IP 限流依赖部署平台转发头 | API route | 仅为演示成本保护，不作为身份认证 |
 | 浏览器坐标不是车载可信位置 | `AgentLab.tsx`、`session.py` | 仅在用户点击授权后接收，记录来源与精度，不用于真实车控，也不写入模型工具上下文 |
-| 充电站与路线不是实时地图数据 | `tools.py` | 输出显式数据源、候选坐标、估算距离、ETA 与路线折线；UI 标为路线示意 |
+| 固定充电站路线不是实时地图数据 | `tools.py` | 输出显式沙箱来源；普通地点路线由 `navigation.py` 的 Nominatim/OSRM 适配器提供 |
 
 没有邮件、定时任务或后台作业，因此没有 `emails.md` 或 `cron.md`。项目目前没有公开部署和索引目标，因此不单列 `seo.md`。
 

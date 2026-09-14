@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from uuid import uuid4
 
 from .models import Scenario, VehicleState
@@ -28,6 +28,7 @@ class CabinSession:
     created_at: float
     expires_at: float
     pending_action: PendingSunroofAction | None = None
+    place_candidates: dict[str, dict[str, object]] = field(default_factory=dict)
 
 
 @dataclass
@@ -42,6 +43,7 @@ def build_scenario(
     latitude: float | None = None,
     longitude: float | None = None,
     accuracy_meters: float | None = None,
+    allow_external_routing: bool = False,
 ) -> VehicleState:
     vehicle = VehicleState()
     if latitude is not None and longitude is not None:
@@ -52,6 +54,7 @@ def build_scenario(
                 "longitude": longitude,
                 "location_source": "browser_geolocation",
                 "location_accuracy_meters": accuracy_meters,
+                "external_routing_consent": allow_external_routing,
             }
         )
     if scenario == "rain":
@@ -99,6 +102,7 @@ class SessionStore:
         latitude: float | None = None,
         longitude: float | None = None,
         accuracy_meters: float | None = None,
+        allow_external_routing: bool = False,
     ) -> CabinSession:
         with self._lock:
             now = time.time()
@@ -111,6 +115,7 @@ class SessionStore:
                     latitude=latitude,
                     longitude=longitude,
                     accuracy_meters=accuracy_meters,
+                    allow_external_routing=allow_external_routing,
                 ),
                 created_at=now,
                 expires_at=now + SESSION_TTL_SECONDS,

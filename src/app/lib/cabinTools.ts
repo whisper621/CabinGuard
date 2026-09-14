@@ -351,13 +351,29 @@ export function executeCabinTool(
         Math.round(routeDistanceKm / 70 * 60 + station.detourKm * 2),
       );
       const points = routePolyline(vehicle, station);
+      const estimatedArrivalBattery = Math.max(
+        0,
+        Math.round((vehicle.battery - routeDistanceKm / (vehicle.range / Math.max(vehicle.battery, 1))) * 10) / 10,
+      );
       return {
         vehicle: {
           ...vehicle,
           destination,
+          destinationLatitude: station.latitude,
+          destinationLongitude: station.longitude,
           routeDistanceKm,
           routeEtaMinutes,
           routePolyline: points,
+          routeProvider: "CabinGuard navigation sandbox",
+          routeDataFreshness: "演示夹具",
+          routeSteps: [
+            "从当前模拟起点出发",
+            `沿演示路线行驶约 ${routeDistanceKm} km`,
+            `到达${destination}`,
+          ],
+          routeAlternatives: [{ label: "演示路线", distanceKm: routeDistanceKm, etaMinutes: routeEtaMinutes }],
+          navigationUrl: null,
+          estimatedArrivalBattery,
         },
         status: "success",
         output: {

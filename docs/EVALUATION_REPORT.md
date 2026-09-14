@@ -37,7 +37,7 @@
 
 为避免把模型随机性和 API 网络状态混入每次代码提交，项目新增独立的确定性测试层：
 
-- 63 条 Pytest 覆盖 Python 多轮编排、FastAPI API 形状、Pydantic 严格参数、会话状态、定位与路线、确认语义、工具前置、安全拦截、导航授权和结果依据。
+- 66 条 Pytest 覆盖 Python 多轮编排、FastAPI API 形状、Pydantic 严格参数、会话状态、真实地点/道路协议、定位同意、确认语义、工具前置、安全拦截、导航授权和结果依据。
 - 39 条 Vitest 用例覆盖会话场景、浏览器定位、坐标隐私、路线状态、确认 TTL、一次性消费、限流、明确确认/取消优先、工具参数拒绝、读取前置、降雨与行驶拦截、导航授权和结果依据。
 - GitHub Actions 在无供应商密钥的环境中执行 Ruff、Pytest、ESLint、typecheck、Vitest 和生产构建。
 - `npm run check` 已在本地完整通过；Next.js 已升级至 16.3.4，当前 `npm audit` 为 0 个已知漏洞。
@@ -53,7 +53,7 @@
 
 旧版 10 条结果保留为历史基线，不与新版指标混算。当前已新增 15 个共享任务：Base、Hallucination、Disambiguation 各 5 个；高风险确认和补槽任务在同一服务端会话中连续运行。Python 评分器逐试次检查工具链、最终状态、策略、结果依据和不确定性处理，并聚合试次通过率、Pass^k 和 Pass@k。
 
-确定性门禁现为 63 条 Pytest + 39 条 Vitest。新版全量真实模型批次尚未运行，因此不能在简历或面试中声称“15/15”或“Pass^3=100%”；后续真实运行结果必须作为独立版本报告记录模型、Prompt、工具、任务集、Token、延迟和失败原因。
+确定性门禁现为 66 条 Pytest + 39 条 Vitest。新版全量真实模型批次尚未运行，因此不能在简历或面试中声称“15/15”或“Pass^3=100%”；后续真实运行结果必须作为独立版本报告记录模型、Prompt、工具、任务集、Token、延迟和失败原因。
 
 ### v3 真实模型冒烟记录
 
@@ -65,4 +65,10 @@
 
 使用 Python 一键启动器同时启动 FastAPI 和 Agent Lab 后，先通过真实 HTTP 请求创建包含上海 WGS84 坐标与 18 米精度的会话，接口正确返回 `locationSource=browser_geolocation`。随后使用默认模拟位置向 `deepseek-flash` 提交“电量不多了，找个顺路快充并导航”，4 个模型轮次产生 `get_vehicle_state → search_charging_stations → start_navigation`，最终目的地为顺义服务区超充站，路线距离 18.6 km、ETA 20 分钟、路线折线 3 个点，Prompt 版本 `3.2.0-python`，工具版本 `3.1.0-python`。
 
-精确浏览器坐标只保留在本地会话与返回给同一浏览器的车辆状态中；发给模型的 `get_vehicle_state` 与 `start_navigation` 工具回执不包含经纬度或折线坐标。该实测证明位置写入、Agent 导航编排和路线状态更新闭环，不代表接入真实地图或充电站平台。
+精确浏览器坐标只保留在本地会话与返回给同一浏览器的车辆状态中；发给模型的 `get_vehicle_state` 与 `start_navigation` 工具回执不包含经纬度或折线坐标。这是 v3 补能沙箱的历史实测，不代表当前 v4 普通地点真实道路能力或充电站平台接入。
+
+## v4 普通地点与真实道路冒烟（2026-09-14）
+
+在默认北京模拟起点调用 Nominatim 检索“昌平区政府”，随后用首个服务端候选调用 OSRM，道路服务返回约 45.9 km、38 分钟和 100 个简化折线点。新增测试以 HTTP Mock 固定验证候选坐标不会进入模型工具回执、浏览器真实位置未同意外部算路时会被阻断，以及地图供应商失败时不会生成虚假路线。公共地图结果会随数据更新，不把该距离作为长期固定 KPI。
+
+端到端 Agent 单任务实测完成 `get_vehicle_state → search_places → plan_navigation`，返回北京市昌平区人民政府、38.7 km、32 分钟、2 条路线、8 个步骤和 29.6% 预计到达电量。复合任务“导航到昌平区政府，同时把空调调到23度并切换外循环”在 3 个模型轮次内完成 `get_climate_state → get_vehicle_state → search_places → set_climate → plan_navigation`，最终同时得到 23℃外循环和真实道路路线。以上是当次外部服务与模型结果，不等同于固定 SLA。

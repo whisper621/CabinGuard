@@ -1,3 +1,5 @@
+@import "leaflet/dist/leaflet.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -22,4 +24,18 @@ body {
 button,
 a {
   -webkit-tap-highlight-color: transparent;
+}
+
+.leaflet-container {
+  background: #0f172a;
+  font: inherit;
+}
+
+.leaflet-control-attribution {
+  background: rgb(15 23 42 / 78%) !important;
+  color: #cbd5e1;
+}
+
+.leaflet-control-attribution a {
+  color: #7dd3fc;
 }

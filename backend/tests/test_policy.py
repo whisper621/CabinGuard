@@ -4,6 +4,7 @@ from cabinguard.policy import (
     classify_confirmation,
     ground_agent_message,
     is_navigation_requested,
+    is_place_search_requested,
 )
 
 
@@ -25,6 +26,8 @@ def test_does_not_infer_authorization(text: str) -> None:
 def test_distinguishes_search_from_navigation() -> None:
     assert not is_navigation_requested("帮我找一个顺路快充站")
     assert is_navigation_requested("找个顺路快充并导航")
+    assert is_place_search_requested("帮我找附近的咖啡店")
+    assert not is_navigation_requested("帮我找附近的咖啡店")
 
 
 def test_replaces_ungrounded_success_claim() -> None:

@@ -9,7 +9,8 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from .models import GeoPoint, ToolExecution, VehicleState
 
-TOOL_VERSION = "3.1.0-python"
+TOOL_VERSION = "4.0.0-python"
+ONLINE_TOOL_NAMES = frozenset({"search_places", "plan_navigation"})
 
 CHARGING_STATIONS: tuple[dict[str, object], ...] = (
     {
@@ -56,6 +57,16 @@ class StartNavigationInput(StrictToolInput):
     destination: str = Field(min_length=1, max_length=100)
 
 
+class SearchPlacesInput(StrictToolInput):
+    query: str = Field(min_length=2, max_length=100)
+    limit: int = Field(default=3, ge=1, le=5)
+
+
+class PlanNavigationInput(StrictToolInput):
+    destination_id: str = Field(min_length=8, max_length=64)
+    route_preference: str = Field(default="fastest", pattern="^(fastest|avoid_highways)$")
+
+
 class ControlSunroofInput(StrictToolInput):
     target_percent: int = Field(ge=0, le=100)
     confirmed: bool
@@ -72,6 +83,8 @@ TOOL_MODELS: dict[str, type[StrictToolInput]] = {
     "set_climate": SetClimateInput,
     "search_charging_stations": SearchChargingInput,
     "start_navigation": StartNavigationInput,
+    "search_places": SearchPlacesInput,
+    "plan_navigation": PlanNavigationInput,
     "control_sunroof": ControlSunroofInput,
     "control_trunk": ControlTrunkInput,
 }
@@ -82,7 +95,9 @@ TOOL_DESCRIPTIONS = {
     "get_climate_state": "读取车内温度、空调设定、风量和循环模式。调整空调前调用。",
     "set_climate": "设置空调目标温度、风量和循环模式。参数必须完整且有效。",
     "search_charging_stations": "结合当前路线搜索快充站。当前请求中必须先调用 get_vehicle_state。",
-    "start_navigation": "开始导航。用户必须明确要求导航，且目的地必须来自本轮充电站搜索结果。",
+    "start_navigation": "开始补能导航。用户必须明确要求导航，且目的地必须来自本轮充电站搜索结果。",
+    "search_places": "使用外部地理编码服务检索任意普通地点、地址或行政区。一般导航前先调用，返回候选 ID、名称和地址。",
+    "plan_navigation": "基于 search_places 返回的候选 ID，调用外部道路服务生成真实道路距离、ETA、路线折线与步骤。需要用户明确导航意图。",
     "control_sunroof": "设置天窗开度。工具层会强制执行天气、车速和确认校验。",
     "control_trunk": "开启或关闭后备箱。行驶中会被工具层阻止。",
 }
@@ -108,6 +123,7 @@ TOOL_DEFINITIONS = [_tool_definition(name, model) for name, model in TOOL_MODELS
 class ToolContext:
     prior_successful_tools: tuple[str, ...] = ()
     navigation_authorized: bool = False
+    place_search_authorized: bool = False
     allowed_navigation_destinations: tuple[str, ...] = ()
     allow_high_speed_sunroof: bool = False
     bypass_read_prerequisites: bool = False
@@ -200,6 +216,13 @@ def execute_tool(
             "工具参数无效，未执行任何车辆操作",
             code="invalid_tool_arguments",
             issues=issues,
+        )
+
+    if name in ONLINE_TOOL_NAMES:
+        return _blocked(
+            vehicle,
+            "该工具必须通过异步外部导航执行器调用",
+            code="online_tool_requires_async_executor",
         )
 
     if name == "get_vehicle_state":

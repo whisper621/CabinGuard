@@ -43,7 +43,11 @@ EXPLICIT_CONFIRMATIONS = {
 
 _PUNCTUATION = re.compile(r"[\s，。！？、,.!?；;：:“”'‘’]")
 _NAVIGATION = re.compile(
-    r"导航|带我去|带路|规划路线|开始路线|前往.*(?:充电|超充|能源站)|去.*(?:充电|超充|能源站)"
+    r"导航|带我去|送我去|我要去|去往|带路|规划路线|开始路线|怎么去|"
+    r"前往.*(?:充电|超充|能源站)|去.*(?:充电|超充|能源站)"
+)
+_PLACE_SEARCH = re.compile(
+    r"(?:查找|搜索|搜|找|附近).*(?:地点|地址|餐厅|饭店|咖啡|停车场|商场|医院|景点|公园|酒店)"
 )
 _SIDE_EFFECT = re.compile(
     r"已(?:经)?(?:将|为|帮|开始|完成|打开|关闭|设置|切换)|导航已开始|操作成功"
@@ -67,6 +71,10 @@ def classify_confirmation(text: str) -> ConfirmationDecision:
 
 def is_navigation_requested(text: str) -> bool:
     return bool(_NAVIGATION.search(text))
+
+
+def is_place_search_requested(text: str) -> bool:
+    return is_navigation_requested(text) or bool(_PLACE_SEARCH.search(text))
 
 
 def ground_agent_message(message: str, traces: Sequence[Trace]) -> str:

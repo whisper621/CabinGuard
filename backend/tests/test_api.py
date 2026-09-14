@@ -33,6 +33,7 @@ def test_creates_session_with_browser_location() -> None:
                 "latitude": 31.2304,
                 "longitude": 121.4737,
                 "accuracyMeters": 18,
+                "allowExternalRouting": True,
             },
         },
     )
@@ -42,6 +43,7 @@ def test_creates_session_with_browser_location() -> None:
     assert vehicle["currentLocation"] == "浏览器授权位置"
     assert vehicle["latitude"] == 31.2304
     assert vehicle["locationAccuracyMeters"] == 18
+    assert vehicle["externalRoutingConsent"] is True
 
 
 def test_rejects_invalid_browser_location() -> None:

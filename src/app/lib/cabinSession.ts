@@ -5,11 +5,18 @@ export type BrowserLocation = {
   latitude: number;
   longitude: number;
   accuracyMeters?: number;
+  allowExternalRouting?: boolean;
 };
 
 export type GeoPoint = {
   latitude: number;
   longitude: number;
+};
+
+export type RouteAlternative = {
+  label: string;
+  distanceKm: number;
+  etaMinutes: number;
 };
 
 export type CabinVehicleState = {
@@ -29,10 +36,19 @@ export type CabinVehicleState = {
   longitude: number;
   locationSource: "simulated" | "browser_geolocation";
   locationAccuracyMeters: number | null;
+  externalRoutingConsent: boolean;
   destination: string;
+  destinationLatitude: number | null;
+  destinationLongitude: number | null;
   routeDistanceKm: number | null;
   routeEtaMinutes: number | null;
   routePolyline: GeoPoint[];
+  routeProvider: string;
+  routeDataFreshness: string;
+  routeSteps: string[];
+  routeAlternatives: RouteAlternative[];
+  navigationUrl: string | null;
+  estimatedArrivalBattery: number | null;
 };
 
 type PendingSunroofAction = {
@@ -88,10 +104,19 @@ const baseVehicle = (): CabinVehicleState => ({
   longitude: 116.4836,
   locationSource: "simulated",
   locationAccuracyMeters: null,
+  externalRoutingConsent: false,
   destination: "未设置",
+  destinationLatitude: null,
+  destinationLongitude: null,
   routeDistanceKm: null,
   routeEtaMinutes: null,
   routePolyline: [],
+  routeProvider: "未启动",
+  routeDataFreshness: "—",
+  routeSteps: [],
+  routeAlternatives: [],
+  navigationUrl: null,
+  estimatedArrivalBattery: null,
 });
 
 const buildScenario = (
@@ -106,6 +131,7 @@ const buildScenario = (
         longitude: location.longitude,
         locationSource: "browser_geolocation" as const,
         locationAccuracyMeters: location.accuracyMeters ?? null,
+        externalRoutingConsent: location.allowExternalRouting ?? false,
       }
     : baseVehicle();
   if (scenario === "rain") return { ...vehicle, speed: 0, weather: "小雨", rainProbability: 70 };
@@ -212,10 +238,11 @@ export const isBrowserLocation = (value: unknown): value is BrowserLocation => {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const location = value as Record<string, unknown>;
   const keys = Object.keys(location);
-  if (keys.some((key) => !["latitude", "longitude", "accuracyMeters"].includes(key))) return false;
+  if (keys.some((key) => !["latitude", "longitude", "accuracyMeters", "allowExternalRouting"].includes(key))) return false;
   const latitude = location.latitude;
   const longitude = location.longitude;
   const accuracy = location.accuracyMeters;
+  const allowExternalRouting = location.allowExternalRouting;
   return typeof latitude === "number"
     && Number.isFinite(latitude)
     && latitude >= -90
@@ -225,7 +252,8 @@ export const isBrowserLocation = (value: unknown): value is BrowserLocation => {
     && longitude >= -180
     && longitude <= 180
     && (accuracy === undefined
-      || (typeof accuracy === "number" && Number.isFinite(accuracy) && accuracy >= 0));
+      || (typeof accuracy === "number" && Number.isFinite(accuracy) && accuracy >= 0))
+    && (allowExternalRouting === undefined || typeof allowExternalRouting === "boolean");
 };
 
 export const sessionTtlSeconds = Math.floor(SESSION_TTL_MS / 1000);

@@ -9,10 +9,16 @@ ToolStatus = Literal["success", "blocked"]
 
 
 class GeoPoint(BaseModel):
-    """A WGS84 point used by the navigation sandbox."""
+    """A WGS84 point used by navigation providers."""
 
     latitude: float = Field(ge=-90, le=90)
     longitude: float = Field(ge=-180, le=180)
+
+
+class RouteAlternative(BaseModel):
+    label: str
+    distance_km: float = Field(ge=0, alias="distanceKm")
+    eta_minutes: int = Field(ge=0, alias="etaMinutes")
 
 
 class VehicleState(BaseModel):
@@ -40,10 +46,25 @@ class VehicleState(BaseModel):
     location_accuracy_meters: float | None = Field(
         None, ge=0, alias="locationAccuracyMeters"
     )
+    external_routing_consent: bool = Field(False, alias="externalRoutingConsent")
     destination: str = "未设置"
+    destination_latitude: float | None = Field(None, ge=-90, le=90, alias="destinationLatitude")
+    destination_longitude: float | None = Field(
+        None, ge=-180, le=180, alias="destinationLongitude"
+    )
     route_distance_km: float | None = Field(None, ge=0, alias="routeDistanceKm")
     route_eta_minutes: int | None = Field(None, ge=0, alias="routeEtaMinutes")
     route_polyline: list[GeoPoint] = Field(default_factory=list, alias="routePolyline")
+    route_provider: str = Field("未启动", alias="routeProvider")
+    route_data_freshness: str = Field("—", alias="routeDataFreshness")
+    route_steps: list[str] = Field(default_factory=list, alias="routeSteps")
+    route_alternatives: list[RouteAlternative] = Field(
+        default_factory=list, alias="routeAlternatives"
+    )
+    navigation_url: str | None = Field(None, alias="navigationUrl")
+    estimated_arrival_battery: float | None = Field(
+        None, ge=0, le=100, alias="estimatedArrivalBattery"
+    )
 
     def public_dict(self) -> dict[str, object]:
         return self.model_dump(by_alias=True)

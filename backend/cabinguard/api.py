@@ -25,6 +25,7 @@ class BrowserLocation(BaseModel):
     latitude: float = Field(ge=-90, le=90)
     longitude: float = Field(ge=-180, le=180)
     accuracy_meters: float | None = Field(None, ge=0, alias="accuracyMeters")
+    allow_external_routing: bool = Field(False, alias="allowExternalRouting")
 
 
 class SessionRequest(BaseModel):
@@ -177,6 +178,7 @@ async def create_session(payload: SessionRequest, request: Request) -> JSONRespo
         latitude=location.latitude if location else None,
         longitude=location.longitude if location else None,
         accuracy_meters=location.accuracy_meters if location else None,
+        allow_external_routing=location.allow_external_routing if location else False,
     )
     return JSONResponse(
         {

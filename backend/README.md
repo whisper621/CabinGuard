@@ -8,12 +8,13 @@
 | --- | --- |
 | `cabinguard/api.py` | FastAPI、CORS、请求校验、限流与 OpenAPI |
 | `cabinguard/agent.py` | DeepSeek 多轮 Tool Calling、工具结果回传、轮次/超时/重试 |
-| `cabinguard/tools.py` | 8 个 Pydantic 工具 Schema、前置条件和动作执行 |
+| `cabinguard/tools.py` | 10 个 Pydantic 工具 Schema、前置条件和动作执行 |
+| `cabinguard/navigation.py` | Nominatim 地点检索、OSRM 道路算路、缓存限流和坐标隔离 |
 | `cabinguard/policy.py` | 高风险确认、导航意图和无依据成功反馈拦截 |
 | `cabinguard/session.py` | 车辆模拟状态、30 分钟会话、2 分钟一次性确认和限流 |
 | `cabinguard/reliability.py` | 共享任务加载、多轮运行、五维确定性评分和 Pass 指标 |
 | `cabinguard/cli.py` | `serve`、`demo`、`chat`、`benchmark` 四个 Python 入口 |
-| `tests/` | 63 条多轮 Agent、确定性工具、API 与评测测试 |
+| `tests/` | 66 条多轮 Agent、地图、确定性工具、API 与评测测试 |
 
 ## 运行
 

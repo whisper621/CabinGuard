@@ -19,6 +19,7 @@
 | [工程交付地图](../documentation/architecture.md) | 代码入口、流程、权限、变量、自动化和测试覆盖 | 接手项目的研发 |
 | [CAR-Bench 对比](CAR_BENCH_COMPARISON.md) | Python 技术栈、项目定位差异与可借鉴的评测方向 | AI 产品、技术面试官 |
 | [Reliability Lab 升级决策](RELIABILITY_LAB_UPGRADE.md) | 三角色功能发散、Top 5 优先级、实现范围与非目标 | 产品、研发、评测 |
+| [真实导航与驾驶舱升级](LIVE_NAVIGATION_UPGRADE.md) | 公开项目研究、15 个升级方向、真实地图实现与能力边界 | 产品、座舱、研发 |
 
 ## 评测与证据
 

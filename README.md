@@ -33,7 +33,7 @@ CabinGuard 解决的不是“车载助手能否聊天”，而是“它能否在
 | 可信机制 | TaskPlan 工具白名单、四类乘员 ABAC、25 个 VSS 对齐信号、5 条声明式约束、结果依据校验 |
 | 可观测性 | SQLite 因果证据账本、状态版本、WebSocket 信号流、任务节点、策略裁决与工具回执 |
 | 评测资产 | 24 个组合任务契约 + 15 个模型可靠性任务、91 条 Python 测试、39 条 TypeScript 测试 |
-| 作品集资产 | 任务驾驶舱、场景仿真、执行追溯、可靠性评测、技术架构、PRD 与决策记录 |
+| 作品集资产 | 任务驾驶舱、数字孪生实验室、证据中心、Agent Lab、System Lab、评测台、PRD 与决策记录 |
 
 > 项目定位：一个主编排 Agent + 一个导航领域 Agent + 四个确定性服务的可信座舱协同系统。当前使用车辆与环境模拟数据验证产品策略，不连接真实车辆控制器。
 
@@ -43,7 +43,7 @@ CabinGuard 解决的不是“车载助手能否聊天”，而是“它能否在
 
 “2 个 Agent”不代表运行两个基础大模型。当前仍由同一个 DeepSeek 客户端完成自然语言推理，领域 Agent 表示可独立版本化、隔离上下文与权限的推理/执行边界；未来只有当导航需要独立上下文、SLA 或团队维护时才拆为独立模型调用。14 个工具也绝不包装成 14 个 Agent。
 
-仓库仍保留过往的 OpenAI Realtime 实验代码作为开发存档，但它既不与主 Agent 协作，也尚未共用 Python 可信执行器，已退出展示路径。因此不应把项目包装成“2 Agent”之外的“多智能体”。这个取舍让项目重点落在任务完成、安全授权和可验证评测，而不是用名词制造复杂度。
+仓库另有一个 `cabinPilotAgent` 的 OpenAI Realtime 实验配置，但它是独立语音路线，既不与主 Agent 协作，也尚未共用 Python 可信执行器，因此不应把项目包装成“2 Agent”或“多智能体”。这个取舍让项目重点落在任务完成、安全授权和可验证评测，而不是用名词制造复杂度。
 
 ## 语言与代码边界
 
@@ -85,21 +85,22 @@ CabinGuard 将任务拆为一条可检查的闭环：
 
 只有工具返回 `executed=true` 或 `navigation_started=true` 等成功副作用时，Agent 才能声称任务完成；否则回复会被约束为澄清、阻止、失败或能力边界说明。
 
-### 4. 一个主入口，四个验证视图
+### 4. 稳定演示与开放探索分开
 
-- 任务驾驶舱是唯一主入口：承担自然语言任务、TaskPlan 预演、乘员权限和执行回执。
-- 场景仿真、执行追溯、可靠性评测和技术架构分别验证环境变化、因果证据、质量指标和运行时边界。
-- 五个页面共享同一导航、术语和深色座舱 HMI，避免把产品主流程与研发试验台混为一谈。
+- 首页使用“LLM 增强理解 + 确定性执行”，即使模型不可用也能回退本地规则。
+- Agent Lab 使用 DeepSeek 多轮 Tool Calling，用于观察模型如何自主选择工具和继续规划。
+- 两条路径服务于不同验证目标，但共享相同的安全语义。
 
-### 5. 真实导航是环境能力，不是额外 Agent
+### 5. 语音、定位与真实导航是输入/环境能力，不是额外 Agent
 
-- 普通地址与 POI 由 OpenStreetMap Nominatim 按用户提交动作检索，道路距离、ETA、备选路线、步骤与 GeoJSON 折线由 OSRM 计算。
-- 导航服务以明确的地点检索与算路工具形式参与主 Agent 编排；精确位置必须经用户授权后才会用于算路，且不写入发给模型的工具回执。
+- Agent Lab 使用浏览器 Web Speech API 完成中文语音转文字与回复播报；识别结果先进入输入框，由用户核对后发送。
+- 当前位置必须由用户点击授权。服务端记录 WGS84 坐标、位置来源、精度与外部算路同意状态，默认仍提供可复现的京承高速模拟起点；精确坐标不写入发给模型的工具回执。
+- 普通地址与 POI 由 OpenStreetMap Nominatim 按用户提交动作检索，道路距离、ETA、备选路线、步骤与 GeoJSON 折线由 OSRM 计算；页面用 Leaflet 和 OpenStreetMap 瓦片展示真实道路形状。
 - 公共服务是无 SLA 的作品集原型数据源，不含实时交通、封路、车道级引导或量产导航能力；提供者失败时系统返回明确阻断，不以模拟折线冒充真实结果。
 
 ### 6. 能力清单与执行规则共用代码事实
 
-- 14 个工具、25 个 VSS 对齐信号和 5 条约束统一由 Python 注册表维护，`/api/cabin/capabilities` 动态生成技术架构页，不手工伪造功能数量。
+- 14 个工具、25 个 VSS 对齐信号和 5 条约束统一由 Python 注册表维护，`/api/cabin/capabilities` 动态生成 System Lab，不手工伪造功能数量。
 - 车窗高速限幅、儿童锁拒绝、P 挡后备箱、雨天天窗和低电量风量限制由声明式约束真正参与工具执行，并返回可机器处理的 `code`、`action` 和建议。
 - 偏好与行程只保留在当前 30 分钟会话；偏好写入/删除必须来自本轮用户明确要求，行程必须来自成功导航回执。
 
@@ -177,16 +178,19 @@ flowchart LR
 | `manage_preferences` | 记住、列出或删除会话偏好 | 写/删需要本轮明确授权；仅当前会话 |
 | `query_trip_history` | 查询最近成功导航形成的行程回执 | 最多 10 条；不接收模型自行编造的记录 |
 
-## 五个统一入口
+## 九个产品入口
 
 | 路径 | 用途 | 是否需要模型密钥 |
 | --- | --- | --- |
-| `/` | 自动进入任务驾驶舱，避免出现两个首页 | 同 `/mission` |
+| `/` | 稳定可复现的座舱任务 MVP，包含本地规则回退 | 否；DeepSeek 可选增强 |
 | `/mission` | v0.6 主演示：任务图预演、四类乘员权限、跨域执行与状态回执 | 预演不需要；完整执行需要 DeepSeek |
-| `/twin-lab` | **场景仿真**：注入高速、驻车、降雨、低电量等时序事件，并通过 WebSocket 查看状态版本 | 否；需启动 Python API |
-| `/ops` | **执行追溯**：查看 TaskPlan、ABAC 裁决、工具回执和信号事件组成的因果证据链 | 否；需启动 Python API |
+| `/agent-lab` | 多轮 Tool Calling、中文语音输入/播报、授权定位、真实道路地图、能耗预测、工具轨迹与策略观察 | 是，`DEEPSEEK_API_KEY` |
+| `/twin-lab` | 注入高速、驻车、降雨、低电量等时序事件，并通过 WebSocket 查看状态版本 | 否；需启动 Python API |
+| `/ops` | 查看 TaskPlan、ABAC 裁决、工具回执和信号事件组成的因果证据链 | 否；需启动 Python API |
+| `/system-lab` | 动态执行图、14 工具权限、25 个 VSS 对齐信号、5 条硬约束和真实/沙箱边界 | 否；需启动 Python API |
 | `/evaluation` | 按 Base / Hallucination / Disambiguation 运行多轮评测，展示五维得分与一致性 | 是，`DEEPSEEK_API_KEY` |
-| `/system-lab` | **技术架构**：动态执行图、工具权限、VSS 信号、硬约束和真实/沙箱边界 | 否；需启动 Python API |
+| `/case-study` | 面向招聘方的产品问题、取舍、证据与路线图 | 否 |
+| `/realtime?agentConfig=cabinPilot` | 可选的实时语音实验入口 | 是，`OPENAI_API_KEY` |
 
 ## 量化验证
 
@@ -208,11 +212,11 @@ flowchart LR
 
 1. **任务图：** 打开 `/mission`，输入“把空调调到 22 度，并导航去北京南站”，展示五节点、三领域和并行执行波次。
 2. **多乘员权限：** 切换“访客”重复导航，展示模型即使调用工具也会被服务端 ABAC 拒绝。
-3. **场景仿真：** 打开 `/twin-lab` 注入“高速道路”和“降雨”，观察 WebSocket 状态版本增长。
+3. **时序数字孪生：** 打开 `/twin-lab` 注入“高速道路”和“降雨”，观察 WebSocket 状态版本增长。
 4. **同意图、不同结果：** 回到任务驾驶舱请求打开天窗，展示 VSS 服务端硬约束。
-5. **执行追溯：** 打开 `/ops`，沿 `planId → taskId → policy → receipt → stateVersion` 解释执行结果。
-6. **技术架构：** 打开 `/system-lab`，解释运行时能力清单和 Agent、工具、硬约束之间的边界。
-7. **可靠性评测：** 打开 `/evaluation`，展示 24 条确定性契约与 15 条模型行为评测的分层质量体系。
+5. **因果复盘：** 打开 `/ops`，沿 `planId → taskId → policy → receipt → stateVersion` 解释执行结果。
+6. **真实地点与导航：** 在 `/agent-lab` 授权定位并导航到明确地点，展示 Nominatim、OSRM 与真实道路折线。
+7. **组合评测：** 打开 `/evaluation`，展示 24 条确定性契约与 15 条模型行为评测的分层质量体系。
 
 更完整的求职讲述方式见 [作品集讲述手册](docs/PORTFOLIO_PLAYBOOK.md)。
 
@@ -290,7 +294,7 @@ npm ci
 npm run dev
 ```
 
-访问 [http://localhost:3000/mission](http://localhost:3000/mission)。任务驾驶舱、场景仿真、执行追溯、可靠性评测和技术架构页都会调用 Python 后端；v0.6 新能力必须启动 Python API。
+访问 [http://localhost:3000/mission](http://localhost:3000/mission)。任务驾驶舱、数字孪生、证据中心、Agent Lab 和评测页会调用 Python 后端；经典首页与 Agent Lab 在未配置该地址时仍保留 Next.js 兼容回退，但 v0.6 新能力必须启动 Python API。
 
 ### 4. 启用 DeepSeek Tool Calling
 
@@ -307,7 +311,7 @@ DEEPSEEK_MODEL=deepseek-v4-flash
 python -m cabinguard chat --scenario default
 ```
 
-完成配置后，在任务驾驶舱输入跨域指令即可体验模型编排与工具调用。
+也可以重启两个服务后访问 [http://localhost:3000/agent-lab](http://localhost:3000/agent-lab)。
 
 ### 5. 运行质量门禁
 
@@ -364,11 +368,15 @@ CabinGuard/
 ├─ pyproject.toml                   # Python 包、依赖和 cabinguard 命令
 ├─ scripts/python_exec.py           # npm 门禁的跨平台 Python 环境选择器
 ├─ src/app/
+│  ├─ CabinDemo.tsx                 # 稳定产品演示与本地回退
+│  ├─ agent-lab/                    # DeepSeek 多轮 Tool Calling 实验台
 │  ├─ mission/                      # 任务计划预演、乘员权限与执行回执
-│  ├─ twin-lab/                     # 场景仿真：WebSocket 时序车辆状态与事件注入
-│  ├─ ops/                          # 执行追溯：计划、策略、工具与状态证据链
+│  ├─ twin-lab/                     # WebSocket 时序数字孪生与事件注入
+│  ├─ ops/                          # 计划、策略、工具与状态证据链
 │  ├─ evaluation/                   # 三类任务、多轮轨迹、一致性与报告导出
-│  ├─ system-lab/                   # 技术架构：运行时能力、权限、信号与约束
+│  ├─ case-study/                   # 招聘方快速阅读的产品案例页
+│  ├─ system-lab/                   # 动态系统架构、权限、信号与约束控制台
+│  ├─ realtime/                     # 可选实时语音入口
 │  ├─ api/
 │  │  ├─ cabin/session/             # 服务端模拟会话
 │  │  ├─ deepseek/agent/            # Agent 编排、超时与结果返回
@@ -416,7 +424,7 @@ CabinGuard/
 
 - 车辆、天气、车控和充电站目录仍为服务端模拟数据；普通地点与道路路线来自 OpenStreetMap/Nominatim/OSRM，但不含实时路况、车道级引导或正式 SLA。
 - 会话使用单进程内存存储，不具备分布式持久化和正式身份认证。
-- OpenAI Realtime 与旧版交互页均已退出用户展示路径；当前核心可验证链路是 Python/FastAPI 主 Agent。
+- OpenAI Realtime 为可选实验入口，当前核心可验证链路是 DeepSeek Agent Lab。
 - 15 个模型任务的真实运行需要有效密钥并产生调用成本，因此不在默认 CI 中运行；任务 Schema 与评分器仍由无密钥测试覆盖。
 
 下一阶段优先级：

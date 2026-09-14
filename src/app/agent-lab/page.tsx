@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
+import AgentLab from "./AgentLab";
 
 export default function AgentLabPage() {
-  redirect("/mission");
+  return <AgentLab />;
 }

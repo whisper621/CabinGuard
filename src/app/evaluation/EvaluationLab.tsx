@@ -1,7 +1,7 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import V6Nav from "../components/V6Nav";
 import caseSuiteJson from "../../../evaluation/cases.json";
 import { cabinApiUrl, usesExternalCabinApi } from "../lib/apiBase";
 
@@ -437,11 +437,30 @@ export default function EvaluationLab() {
   };
 
   return (
-    <main className="min-h-screen bg-[#050b16] text-slate-100">
-      <V6Nav active="/evaluation" />
-      <section className="mx-auto max-w-[1680px] px-5 py-6 lg:px-8">
-        <div className="mb-5 rounded-[30px] border border-violet-400/20 bg-[linear-gradient(115deg,#0a1728,#16122c)] p-6 shadow-2xl shadow-black/20">
-          <div className="flex flex-wrap items-center justify-between gap-4"><div><p className="text-xs font-semibold tracking-[0.16em] text-violet-300">RELIABILITY EVALUATION / 可靠性评测</p><h1 className="mt-2 text-3xl font-semibold md:text-5xl">不是一次跑通，<span className="text-violet-300">而是持续可验证</span></h1><p className="mt-3 max-w-4xl text-sm leading-7 text-slate-400">以任务图、乘员权限、工具白名单、状态变更与对话轨迹作为证据，检验系统是否在不同输入下保持正确和克制。</p></div><div className="grid min-w-56 grid-cols-3 gap-2 text-center"><div className="rounded-xl bg-black/25 p-3"><p className="text-2xl font-semibold text-violet-300">{composite?.caseCount ?? 24}</p><p className="text-[10px] text-slate-500">场景数</p></div><div className="rounded-xl bg-black/25 p-3"><p className="text-2xl font-semibold text-emerald-300">{composite?.passed ?? "—"}</p><p className="text-[10px] text-slate-500">已通过</p></div><div className="rounded-xl bg-black/25 p-3"><p className="text-2xl font-semibold text-cyan-300">{composite ? `${Math.round(composite.passRate * 100)}%` : "—"}</p><p className="text-[10px] text-slate-500">契约通过率</p></div></div></div>
+    <main className="min-h-screen bg-slate-50 text-slate-900">
+      <header className="border-b border-slate-200 bg-white">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-5 py-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="rounded-lg bg-violet-600 px-2 py-1 text-xs font-bold text-white">可靠性实验室</span>
+              <h1 className="text-lg font-semibold">CabinGuard 可靠性评测</h1>
+            </div>
+            <p className="mt-1 text-sm text-slate-500">三类任务、多轮轨迹、五维评分与一致性指标，不用一次成功代表稳定可靠。</p>
+          </div>
+          <nav className="flex items-center gap-2 text-sm">
+            <Link className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-blue-700 hover:bg-blue-100" href="/mission">任务驾驶舱</Link>
+            <Link className="rounded-lg border border-slate-200 bg-white px-3 py-2 hover:bg-slate-50" href="/twin-lab">数字孪生</Link>
+            <Link className="rounded-lg border border-slate-200 bg-white px-3 py-2 hover:bg-slate-50" href="/ops">证据中心</Link>
+            <Link className="rounded-lg border border-slate-200 bg-white px-3 py-2 hover:bg-slate-50" href="/">稳定演示</Link>
+            <Link className="rounded-lg border border-slate-200 bg-white px-3 py-2 hover:bg-slate-50" href="/case-study">产品案例</Link>
+            <Link className="rounded-lg border border-slate-200 bg-white px-3 py-2 hover:bg-slate-50" href="/agent-lab">Agent Lab</Link>
+          </nav>
+        </div>
+      </header>
+
+      <section className="mx-auto max-w-7xl px-5 py-6">
+        <div className="mb-5 rounded-2xl border border-violet-200 bg-gradient-to-r from-violet-50 to-blue-50 p-5 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-4"><div><p className="text-xs font-semibold tracking-[0.16em] text-violet-600">v0.6 组合场景契约</p><h2 className="mt-2 text-xl font-semibold">任务图 × 乘员权限 × 越权隔离</h2><p className="mt-2 text-sm text-slate-600">24 条零模型成本确定性用例，验证领域召回、工具白名单、DAG 节点数与 ABAC 决策；下方 15 条模型轨迹评测负责验证真实对话表现。</p></div><div className="grid min-w-56 grid-cols-3 gap-2 text-center"><div className="rounded-xl bg-white/80 p-3"><p className="text-2xl font-semibold text-violet-700">{composite?.caseCount ?? 24}</p><p className="text-[10px] text-slate-500">场景数</p></div><div className="rounded-xl bg-white/80 p-3"><p className="text-2xl font-semibold text-emerald-600">{composite?.passed ?? "—"}</p><p className="text-[10px] text-slate-500">已通过</p></div><div className="rounded-xl bg-white/80 p-3"><p className="text-2xl font-semibold text-blue-700">{composite ? `${Math.round(composite.passRate * 100)}%` : "—"}</p><p className="text-[10px] text-slate-500">契约通过率</p></div></div></div>
         </div>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <MetricCard label="试次通过率" value={`${summary.trialRate}%`} hint={`${summary.passedTrials}/${results.length || totalTrials} 个试次`} />
@@ -452,14 +471,14 @@ export default function EvaluationLab() {
 
         <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           {dimensionNames.map((name) => (
-            <div key={name} className="rounded-2xl border border-white/10 bg-[#091323] p-3">
+            <div key={name} className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
               <p className="text-xs text-slate-500">{dimensionLabels[name]}</p>
               <p className="mt-1 text-xl font-semibold">{summary.dimensionRates[name]}%</p>
             </div>
           ))}
         </div>
 
-        <div className="mt-5 rounded-[30px] border border-white/10 bg-[#091323] p-5">
+        <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>
               <h2 className="font-semibold">可靠性评测集 v{suite.version}</h2>
@@ -477,7 +496,7 @@ export default function EvaluationLab() {
                 key={value}
                 disabled={running}
                 onClick={() => changeTaskType(value)}
-                className={`rounded-xl border px-3 py-2 text-sm ${taskType === value ? "border-violet-400/45 bg-violet-400/10 text-violet-200" : "border-white/10 text-slate-300 hover:bg-white/[0.05]"}`}
+                className={`rounded-xl border px-3 py-2 text-sm ${taskType === value ? "border-violet-600 bg-violet-50 text-violet-700" : "border-slate-200 hover:bg-slate-50"}`}
               >
                 {taskTypeLabels[value]}
               </button>
@@ -486,13 +505,13 @@ export default function EvaluationLab() {
               value={trialCount}
               disabled={running}
               onChange={(event) => changeTrialCount(Number(event.target.value) as 1 | 3)}
-              className="rounded-xl border border-white/10 bg-[#0b1424] px-3 py-2 text-sm text-slate-200"
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
             >
               <option value={1}>1 次快速评测</option>
               <option value={3}>3 次一致性评测</option>
             </select>
             <div className="ml-auto flex gap-2">
-              <button disabled={running || !results.length} onClick={exportReport} className="rounded-xl border border-white/15 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-white/[0.05] disabled:opacity-40">导出版本化 JSON</button>
+              <button disabled={running || !results.length} onClick={exportReport} className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium hover:bg-slate-50 disabled:opacity-40">导出版本化 JSON</button>
               <button disabled={running || largeRunBlocked} onClick={() => void runEvaluation()} className="rounded-xl bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50">
                 {running ? `评测中 ${progress}/${totalTrials}` : largeRunBlocked ? "请先选择单一任务类型" : `运行 ${totalTrials} 个试次`}
               </button>
@@ -500,10 +519,10 @@ export default function EvaluationLab() {
           </div>
         </div>
 
-        <div className="mt-5 overflow-hidden rounded-[30px] border border-white/10 bg-[#091323]">
+        <div className="mt-5 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="overflow-x-auto">
             <table className="min-w-full text-left text-sm">
-              <thead className="bg-white/[0.04] text-xs uppercase tracking-wide text-slate-400">
+              <thead className="bg-slate-100 text-xs uppercase tracking-wide text-slate-500">
                 <tr>
                   <th className="px-4 py-3">任务</th>
                   <th className="px-4 py-3">多轮输入与期望</th>
@@ -512,7 +531,7 @@ export default function EvaluationLab() {
                   <th className="px-4 py-3">失败解释</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/[0.07]">
+              <tbody className="divide-y divide-slate-100">
                 {selectedCases.map((test) => {
                   const caseResults = results.filter((item) => item.caseId === test.id);
                   const latest = caseResults.at(-1);
@@ -521,17 +540,17 @@ export default function EvaluationLab() {
                     <tr key={test.id} className="align-top">
                       <td className="whitespace-nowrap px-4 py-4">
                         <p className="font-semibold">{test.id} · {test.title}</p>
-                        <p className="mt-1 text-xs text-slate-500">{taskTypeLabels[test.taskType]} / {test.category}</p>
+                        <p className="mt-1 text-xs text-slate-400">{taskTypeLabels[test.taskType]} / {test.category}</p>
                       </td>
                       <td className="max-w-sm px-4 py-4">
                         {test.turns.map((turn, index) => (
                           <div key={`${test.id}-${index}`} className={index ? "mt-3" : ""}>
-                            <p><span className="text-xs text-violet-300">Turn {index + 1}</span> {turn.input}</p>
-                            <p className="mt-1 text-xs text-slate-500">期望：{turn.expectedTools.join(" → ") || (turn.expectClarification ? "澄清" : "能力边界")}</p>
+                            <p><span className="text-xs text-violet-600">Turn {index + 1}</span> {turn.input}</p>
+                            <p className="mt-1 text-xs text-slate-400">期望：{turn.expectedTools.join(" → ") || (turn.expectClarification ? "澄清" : "能力边界")}</p>
                           </div>
                         ))}
                       </td>
-                      <td className="max-w-sm px-4 py-4 text-xs text-slate-400">
+                      <td className="max-w-sm px-4 py-4 text-xs text-slate-600">
                         {latest
                           ? latest.trajectory.map((step, index) => (
                             <p key={`${test.id}-trace-${index}`} className={index ? "mt-2" : ""}>
@@ -541,12 +560,12 @@ export default function EvaluationLab() {
                           : "等待运行"}
                       </td>
                       <td className="px-4 py-4">
-                        {!caseResults.length ? <span className="text-slate-500">—</span> : (
+                        {!caseResults.length ? <span className="text-slate-400">—</span> : (
                           <div className="flex flex-wrap gap-1">
                             {Array.from({ length: trialCount }, (_, index) => {
                               const result = caseResults.find((item) => item.trial === index + 1);
                               return (
-                                <span key={`${test.id}-trial-${index}`} className={`rounded-full px-2 py-1 text-xs font-medium ${!result ? "bg-white/[0.06] text-slate-500" : result.passed ? "bg-emerald-400/10 text-emerald-300" : "bg-rose-400/10 text-rose-300"}`}>
+                                <span key={`${test.id}-trial-${index}`} className={`rounded-full px-2 py-1 text-xs font-medium ${!result ? "bg-slate-100 text-slate-400" : result.passed ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>
                                   {index + 1}: {!result ? "—" : result.passed ? "✓" : "×"}
                                 </span>
                               );
@@ -555,7 +574,7 @@ export default function EvaluationLab() {
                         )}
                       </td>
                       <td className="max-w-sm px-4 py-4 text-xs">
-                        {!caseResults.length ? <span className="text-slate-500">—</span> : reasons.length ? <span className="text-rose-300">{reasons.join("；")}</span> : <span className="text-emerald-300">五个维度均通过</span>}
+                        {!caseResults.length ? <span className="text-slate-400">—</span> : reasons.length ? <span className="text-red-600">{reasons.join("；")}</span> : <span className="text-emerald-700">五个维度均通过</span>}
                       </td>
                     </tr>
                   );
@@ -571,7 +590,7 @@ export default function EvaluationLab() {
 
 function MetricCard({ label, value, hint }: { label: string; value: string; hint: string }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-[#091323] p-4">
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
       <p className="text-xs text-slate-500">{label}</p>
       <p className="mt-1 text-3xl font-semibold">{value}</p>
       <p className="mt-1 text-xs text-slate-400">{hint}</p>

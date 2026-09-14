@@ -1,7 +1,7 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import V6Nav from "../components/V6Nav";
 import { cabinApiUrl } from "../lib/apiBase";
 
 type ToolCapability = {
@@ -89,22 +89,24 @@ export default function SystemLab() {
   const tools = manifest?.tools.filter((tool) => toolFilter === "全部" || tool.category === toolFilter) ?? [];
   const edgeSet = new Set(manifest?.executionGraph.edges.map(([from, to]) => `${from}:${to}`) ?? []);
 
-  return <main className="min-h-screen bg-[#050b16] text-slate-100">
-    <V6Nav active="/system-lab" />
-    <div className="mx-auto max-w-[1680px] space-y-5 px-5 py-6 lg:px-8">
-      <section className="flex flex-wrap items-end justify-between gap-5 rounded-[30px] border border-white/10 bg-[linear-gradient(115deg,#0a1728,#16122c)] p-6">
-        <div><p className="text-xs tracking-[0.2em] text-violet-300">RUNTIME ARCHITECTURE / 技术架构</p><h1 className="mt-3 text-3xl font-semibold md:text-5xl">让每一项能力都有<br /><span className="text-violet-300">运行时依据与执行边界</span></h1><p className="mt-4 max-w-4xl text-sm leading-7 text-slate-400">这里读取 Python 运行时注册表，而不是展示静态功能海报。可用于说明 Agent、工具、车辆信号、硬约束与真实集成之间的关系。</p></div>
-        <span className={`rounded-2xl border px-4 py-3 text-xs ${manifest ? "border-emerald-400/25 bg-emerald-400/10 text-emerald-300" : "border-amber-400/25 bg-amber-400/10 text-amber-300"}`}>{manifest ? `Python 注册表已连接 · v${manifest.version}` : "正在连接 Python 注册表"}</span>
-      </section>
+  return <main className="min-h-screen bg-[#070b14] text-slate-100">
+    <header className="sticky top-0 z-20 border-b border-white/10 bg-[#080d18]/95 backdrop-blur-xl">
+      <div className="mx-auto flex max-w-[1720px] flex-wrap items-center justify-between gap-4 px-5 py-4 xl:px-8">
+        <div className="flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-cyan-400 font-black text-slate-950">CG</span><div><div className="flex items-center gap-2"><h1 className="text-lg font-semibold">System Lab</h1><span className="rounded-full border border-violet-400/25 bg-violet-400/10 px-2 py-1 text-xs text-violet-200">Architecture Truth</span></div><p className="mt-0.5 text-xs text-slate-500">由 Python 运行时注册表生成，不是静态功能海报</p></div></div>
+        <nav className="flex flex-wrap items-center gap-2 text-sm"><Link href="/mission" className="rounded-lg px-3 py-2 text-cyan-300 hover:bg-cyan-400/10 hover:text-white">任务驾驶舱</Link><Link href="/agent-lab" className="rounded-lg px-3 py-2 text-slate-400 hover:bg-white/5 hover:text-white">经典 Agent 实验室</Link><Link href="/twin-lab" className="rounded-lg px-3 py-2 text-slate-400 hover:bg-white/5 hover:text-white">数字孪生</Link><Link href="/ops" className="rounded-lg px-3 py-2 text-slate-400 hover:bg-white/5 hover:text-white">证据中心</Link><Link href="/evaluation" className="rounded-lg px-3 py-2 text-slate-400 hover:bg-white/5 hover:text-white">可靠性评测</Link><span className={`rounded-lg border px-3 py-2 text-xs ${manifest ? "border-emerald-400/25 bg-emerald-400/10 text-emerald-300" : "border-amber-400/25 bg-amber-400/10 text-amber-300"}`}>{manifest ? `Python 注册表 · ${manifest.version}` : "正在连接 Python"}</span></nav>
+      </div>
+    </header>
+
+    <div className="mx-auto max-w-[1720px] space-y-5 px-5 py-5 xl:px-8">
       {error && <section className="rounded-2xl border border-rose-400/25 bg-rose-500/10 p-4 text-sm text-rose-200"><p className="font-medium">无法读取真实能力清单：{error}</p><p className="mt-1 text-rose-300/70">请用 start_demo.py 同时启动 FastAPI 与 Next.js。当前页面不会用静态数字伪装后端能力。</p></section>}
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
         <Metric value={manifest?.agentCount ?? "—"} label="协同 Agent" note="主编排 + 导航领域" />
-        <Metric value={manifest?.toolCount ?? "—"} label="已注册工具" note="严格 Pydantic 参数" />
-        <Metric value={manifest?.signalCount ?? "—"} label="VSS 车辆信号" note="读取与控制信号" />
-        <Metric value={manifest?.constraintCount ?? "—"} label="硬约束" note="拒绝或降级执行" />
-        <Metric value={manifest?.integrations.filter((item) => item.mode === "live").length ?? "—"} label="真实集成" note="模型、地图、定位" />
-        <Metric value={manifest?.executionGraph.nodes.length ?? "—"} label="执行节点" note="端到端执行阶段" />
+        <Metric value={manifest?.toolCount ?? "—"} label="Registered Tools" note="严格 Pydantic 参数" />
+        <Metric value={manifest?.signalCount ?? "—"} label="VSS Signals" note="读取与控制信号" />
+        <Metric value={manifest?.constraintCount ?? "—"} label="Hard Constraints" note="拒绝或降级执行" />
+        <Metric value={manifest?.integrations.filter((item) => item.mode === "live").length ?? "—"} label="Live Integrations" note="模型、地图、定位" />
+        <Metric value={manifest?.executionGraph.nodes.length ?? "—"} label="Execution Nodes" note="端到端执行阶段" />
       </section>
 
       <section className="rounded-3xl border border-white/10 bg-[#0b1220] p-5">

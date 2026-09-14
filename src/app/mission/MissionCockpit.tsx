@@ -76,7 +76,7 @@ export default function MissionCockpit() {
       setMeta({ model: data.model, turns: data.turns, tokens: data.totalTokens, stateVersion: data.stateVersion });
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "执行失败");
-      setAnswer("任务图已经可以独立预演；若模型执行失败，请检查 Python 服务与 DEEPSEEK_API_KEY。安全策略和场景仿真功能不依赖模型。 ");
+      setAnswer("任务图已经可以独立预演；若模型执行失败，请检查 Python 服务与 DEEPSEEK_API_KEY。安全策略和数字孪生功能不依赖模型。 ");
     } finally { setBusy(false); }
   };
 

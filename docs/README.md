@@ -21,6 +21,7 @@
 | [Reliability Lab 升级决策](RELIABILITY_LAB_UPGRADE.md) | 三角色功能发散、Top 5 优先级、实现范围与非目标 | 产品、研发、评测 |
 | [真实导航与驾驶舱升级](LIVE_NAVIGATION_UPGRADE.md) | 公开项目研究、15 个升级方向、真实地图实现与能力边界 | 产品、座舱、研发 |
 | [参考架构升级记录](REFERENCE_ARCHITECTURE_UPGRADE.md) | 参考仓库许可核查、意图/实现差距、三视角创意与 v0.5 落点 | 产品、座舱、研发、面试官 |
+| [混合多 Agent 演进决策](MULTI_AGENT_EVOLUTION_PLAN.md) | 单 Agent 是否足够、拆分阈值、15 个候选方向、Top 5 和四周路线 | AI 产品、座舱、具身、面试官 |
 
 ## 评测与证据
 

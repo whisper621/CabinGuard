@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import App from "../App";
 import { EventProvider } from "../contexts/EventContext";
 import { TranscriptProvider } from "../contexts/TranscriptContext";
@@ -7,6 +8,7 @@ import { TranscriptProvider } from "../contexts/TranscriptContext";
 export const dynamic = "force-dynamic";
 
 export default function RealtimePage() {
+  redirect("/");
   if (!process.env.OPENAI_API_KEY) {
     return (
       <main className="grid min-h-screen place-items-center bg-slate-50 p-6 text-slate-900">

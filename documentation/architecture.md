@@ -2,24 +2,23 @@
 
 ## 产品概览
 
-CabinGuard 是智能座舱可信任务 Agent MVP。它用模拟车辆和充电数据验证“理解目标—读取上下文—安全校验—执行工具—核验结果”的闭环，可接收用户明确授权的浏览器坐标，但不接入真实车辆、道路地图或充电平台。
+CabinGuard 是智能座舱可信任务 Agent MVP。它用模拟车辆状态验证“理解目标—任务编排—权限/安全校验—确定性执行—证据核验”的闭环；可接收用户明确授权的浏览器坐标，并接入 Nominatim、OSRM 与 OpenStreetMap 公共道路数据，但不接入真实车辆或商业导航平台。
 
 关键假设：
 
 - 模型是可出错的规划者，不能直接修改车辆状态。
 - 服务端工具执行器是动作边界，负责参数、前置条件和风险规则。
-- 本地稳定演示用于可复现展示；DeepSeek Agent Lab 用于观察开放式 Tool Calling。
+- `/` 是唯一主操控页，集中展示大地图、DeepSeek Tool Calling、TaskPlan、角色权限、车辆状态和执行记录。
 - 所有状态和策略都属于演示级实现，不能直接用于量产车控。
 
 ## 技术栈与入口
 
 | 层级 | 实现 | 入口 |
 | --- | --- | --- |
-| 产品 UI | Next.js、React、TypeScript、Tailwind | `/` |
-| Tool Calling 实验台 | DeepSeek Chat Completions、浏览器语音/定位、真实道路地图、工具与策略轨迹 | `/agent-lab` |
-| Reliability Lab | 页面或 Python CLI 驱动真实 Agent API；Python 五维评分与一致性聚合 | `/evaluation`、`evaluation/cases.json`、`backend/cabinguard/reliability.py` |
-| 核心语音 | Web Speech API 中文识别与播报 | `/agent-lab` |
-| 可选实时语音 | OpenAI Realtime Agents | `/realtime` |
+| 智能座舱 | DeepSeek Chat Completions、浏览器语音/定位、真实道路地图、TaskPlan、角色与工具回执 | `/` |
+| 验证中心 | 场景信号注入、SQLite 证据追溯、组合契约与模型可靠性评测 | `/validation`、`evaluation/cases.json`、`backend/cabinguard/reliability.py` |
+| 项目说明 | 产品故事、真实边界与 Python 动态能力注册表 | `/project` |
+| 核心语音 | Web Speech API 中文识别与播报 | `/` |
 | Python Agent API | FastAPI、DeepSeek 多轮编排、OpenAPI | `backend/cabinguard/api.py` |
 | 服务端会话 | Python 内存 Store、TTL、限流 | `backend/cabinguard/session.py` |
 | 可信工具边界 | Pydantic 参数校验、领域执行器 | `backend/cabinguard/tools.py` |
@@ -44,7 +43,7 @@ CabinGuard 是智能座舱可信任务 Agent MVP。它用模拟车辆和充电�
                                   └─ 更新服务端模拟会话
 ```
 
-会话 ID 是演示状态定位符，不是用户身份凭证。项目目前没有账号、组织、租户或角色系统。
+会话 ID 是演示状态定位符，不是用户身份凭证。项目实现了驾驶员、前排乘客、后排儿童、访客四类演示角色及 ABAC，但角色由浏览器请求创建，不能等同于可信账号、设备身份或车辆所有权。
 
 ## 已知风险与假设
 
@@ -54,10 +53,10 @@ CabinGuard 是智能座舱可信任务 Agent MVP。它用模拟车辆和充电�
 | DeepSeek 输出可能不符合工具 Schema | `backend/cabinguard/tools.py` | 服务端再次用 Pydantic 校验，失败不改变状态 |
 | 模型可能无依据宣称完成 | `backend/cabinguard/policy.py` | 返回前检查副作用是否有成功工具结果 |
 | 整条请求重试可能重复副作用 | Agent Lab 和评测客户端 | 当前动作多为绝对赋值；真实接入前必须增加幂等键 |
-| Realtime 与 DeepSeek 尚未共用执行器 | `src/app/agentConfigs/cabinPilot.ts` | 明确标记为后续统一项，不把 Realtime 当生产安全链路 |
+| 早期 Realtime 代码未共用执行器 | `src/app/agentConfigs/cabinPilot.ts` | 不再暴露为产品入口，也不计入当前 Agent 数量 |
 | 来源 IP 限流依赖部署平台转发头 | API route | 仅为演示成本保护，不作为身份认证 |
 | 浏览器坐标不是车载可信位置 | `AgentLab.tsx`、`session.py` | 仅在用户点击授权后接收，记录来源与精度，不用于真实车控，也不写入模型工具上下文 |
-| 固定充电站路线不是实时地图数据 | `tools.py` | 输出显式沙箱来源；普通地点路线由 `navigation.py` 的 Nominatim/OSRM 适配器提供 |
+| 固定充电站目录不是实时充电平台 | `tools.py` | 输出显式沙箱来源；普通地点路线由 `navigation.py` 的 Nominatim/OSRM 适配器提供 |
 
 没有邮件、定时任务或后台作业，因此没有 `emails.md` 或 `cron.md`。项目目前没有公开部署和索引目标，因此不单列 `seo.md`。
 

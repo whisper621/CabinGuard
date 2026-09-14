@@ -21,7 +21,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 RUNTIME_DIRECTORY = PROJECT_ROOT / ".runtime"
 STATE_PATH = RUNTIME_DIRECTORY / "demo-processes.json"
 API_HEALTH_URL = "http://127.0.0.1:8000/api/health"
-AGENT_LAB_URL = "http://localhost:3000/mission"
+COCKPIT_URL = "http://localhost:3000/"
 
 
 def python_executable() -> Path:
@@ -162,7 +162,7 @@ def start_showcase(*, open_browser: bool) -> None:
             backend_pid = backend.pid
             wait_for_endpoint("Python API", API_HEALTH_URL, 30, backend)
 
-        if endpoint_is_ready(AGENT_LAB_URL):
+        if endpoint_is_ready(COCKPIT_URL):
             print("[OK] Next.js 网页已在运行，直接复用。", flush=True)
             frontend_pid = int(previous_state.get("frontendPid", 0))
         else:
@@ -178,7 +178,7 @@ def start_showcase(*, open_browser: bool) -> None:
             )
             owned_processes.append(frontend)
             frontend_pid = frontend.pid
-            wait_for_endpoint("Next.js Agent Lab", AGENT_LAB_URL, 45, frontend)
+            wait_for_endpoint("Next.js 智能座舱", COCKPIT_URL, 45, frontend)
 
         STATE_PATH.write_text(
             json.dumps(
@@ -194,16 +194,13 @@ def start_showcase(*, open_browser: bool) -> None:
         )
 
         print("\nCabinGuard 已完整启动。", flush=True)
-        print("产品主页：       http://localhost:3000", flush=True)
-        print("任务驾驶舱：    http://localhost:3000/mission", flush=True)
-        print("经典 Agent Lab：http://localhost:3000/agent-lab", flush=True)
-        print("数字孪生实验室：http://localhost:3000/twin-lab", flush=True)
-        print("编排证据中心：  http://localhost:3000/ops", flush=True)
-        print("可靠性评测：    http://localhost:3000/evaluation", flush=True)
+        print("智能座舱：       http://localhost:3000/", flush=True)
+        print("验证中心：       http://localhost:3000/validation", flush=True)
+        print("项目说明：       http://localhost:3000/project", flush=True)
         print("Python API：     http://127.0.0.1:8000/docs", flush=True)
 
         if open_browser:
-            webbrowser.open(AGENT_LAB_URL)
+            webbrowser.open(COCKPIT_URL)
 
         if not owned_processes:
             return

@@ -2,7 +2,7 @@
 
 ## 1. v0.6 主链路与兼容运行方式
 
-v0.6 的主演示位于 `/mission`：FastAPI 先把用户目标编译为可信 TaskPlan，再让主 Agent 在白名单内规划；每次工具调用必须通过乘员 ABAC 与 VSS 约束，计划、策略和回执写入 SQLite 证据账本。`/twin-lab` 用 WebSocket 展示时序车辆状态，`/ops` 负责证据复盘。经典主页和 `/agent-lab` 继续保留；Next.js Route Handlers 仅是兼容回退，不包含 v0.6 全部能力。
+v0.6 的主演示统一位于 `/`：带大地图的智能座舱同时展示真实道路导航、TaskPlan、四类乘员权限、座舱状态、策略与执行回执。`/validation` 用三个页内标签承载 WebSocket 时序场景、SQLite 证据复盘和可靠性评测；`/project` 说明产品价值、真实边界与运行时能力注册表。旧地址只做兼容重定向，不再形成多个互相竞争的主页面。
 
 ```text
 用户请求
@@ -40,7 +40,7 @@ v0.6 的主演示位于 `/mission`：FastAPI 先把用户目标编译为可信 T
 
 ## 3. 可观测性
 
-每次请求写入 `plan.created`，每次调用写入 `policy.decision` 和 `tool.receipt`，数字孪生事件写入 `signal.injected`。Trace 关联 `planId`、`taskId`、领域、策略代码和执行前后 `stateVersion`；Ops 页面可按会话筛选并查看 SQLite 原始证据。
+每次请求写入 `plan.created`，每次调用写入 `policy.decision` 和 `tool.receipt`，场景仿真事件写入 `signal.injected`。Trace 关联 `planId`、`taskId`、领域、策略代码和执行前后 `stateVersion`；验证中心的“执行追溯”页可按会话筛选并查看 SQLite 原始证据。
 
 ## 4. 数据边界
 

@@ -1,5 +1,5 @@
-import SystemLab from "./SystemLab";
+import { redirect } from "next/navigation";
 
 export default function SystemLabPage() {
-  return <SystemLab />;
+  redirect("/project#architecture");
 }

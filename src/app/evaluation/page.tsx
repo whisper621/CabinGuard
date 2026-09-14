@@ -1,5 +1,5 @@
-import EvaluationLab from "./EvaluationLab";
+import { redirect } from "next/navigation";
 
 export default function EvaluationPage() {
-  return <EvaluationLab />;
+  redirect("/validation?tab=evaluation");
 }

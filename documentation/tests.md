@@ -13,11 +13,11 @@
 | 补能绕行筛选 | 最大绕行参数影响候选结果 | 自动单元 | `cabinTools.test.ts` | existing / CI required |
 | 导航授权和候选绑定 | 未明确要求或目的地非本轮候选时拒绝 | 自动单元 | `cabinTools.test.ts` | existing / CI required |
 | 会话场景、确认 TTL、一次性消费和限流 | 过期/重复确认不得执行，第 31 次窗口请求被拒绝 | 自动单元 | `cabinSession.test.ts` | existing / CI required |
-| Python 多轮编排、API、工具、VSS 约束、会话记忆、安全策略与评分器 | Python Agent 主后端与 TypeScript 兼容语义一致 | 自动单元/API | `backend/tests/`（75 条） | existing / CI required |
+| Python 多轮编排、TaskPlan、ABAC、证据账本、WebSocket、API、工具、VSS 约束、记忆、安全策略与评分器 | Python Agent 主后端与 TypeScript 兼容语义一致 | 自动单元/API | `backend/tests/`（91 条） | existing / CI required |
 | 地点/道路提供者协议 | 候选坐标隔离、外部算路同意、服务失败不生成假路线 | 自动单元 | `backend/tests/test_navigation.py` | existing / CI required |
-| 15 个三类模型任务 | 有序工具链、最终状态、策略、依据、歧义/能力边界、跨试次一致性 | guarded live | `/evaluation` 或 `python -m cabinguard benchmark` | existing / manual, costs API |
+| 15 个三类模型任务 | 有序工具链、最终状态、策略、依据、歧义/能力边界、跨试次一致性 | guarded live | `/validation?tab=evaluation` 或 `python -m cabinguard benchmark` | existing / manual, costs API |
 
-CI 依次运行 Ruff、75 条 Pytest、ESLint、TypeScript、39 条 Vitest 和生产构建；不要求任何供应商密钥。
+CI 依次运行 ESLint、TypeScript、39 条 Vitest、Ruff、91 条 Pytest 和生产构建；共 130 条自动化测试，不要求任何供应商密钥。
 
 ## Proposed tests
 
@@ -36,5 +36,5 @@ CI 依次运行 Ruff、75 条 Pytest、ESLint、TypeScript、39 条 Vitest 和�
 | --- | --- | --- |
 | 多实例/Serverless 下的会话一致性 | 会话丢失、确认状态漂移 | none；当前明确限制为单进程 Demo |
 | 身份与真实车辆所有权 | 越权车控 | none；项目没有真实车控且禁止生产使用 |
-| 持久化审计与幂等 | 重试后重复动作、无法追责 | none；真实接入前必须完成 |
-| Realtime 与 DeepSeek 策略一致性 | 两条链路行为不同 | partial；当前只对 DeepSeek 可信链路设 CI 门禁 |
+| 命令幂等与乐观并发校验 | 重试后重复动作、陈旧状态覆盖 | partial；已有 SQLite 证据和 `stateVersion`，但工具请求尚无 `commandId/expectedStateVersion` |
+| 完整模型回归自动化 | 模型升级后行为漂移 | guarded live；15 个任务需主动运行并产生 API 成本，不进入默认 CI |

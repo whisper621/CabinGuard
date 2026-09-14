@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 const metrics = [
   { value: "7", label: "能力域", note: "导航 / 补能 / HVAC / 车身 / 座椅 / 灯光 / 记忆" },
@@ -35,6 +36,7 @@ const roadmap = [
 ];
 
 export default function CaseStudyPage() {
+  redirect("/project");
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100">
       <header className="border-b border-white/10 bg-slate-950/90 backdrop-blur">

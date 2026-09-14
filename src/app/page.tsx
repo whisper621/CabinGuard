@@ -1,5 +1,5 @@
-import CabinDemo from "./CabinDemo";
+import AgentLab from "./agent-lab/AgentLab";
 
 export default function Page() {
-  return <CabinDemo />;
+  return <AgentLab />;
 }

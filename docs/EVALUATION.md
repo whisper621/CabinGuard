@@ -38,7 +38,7 @@ Reliability Lab 验证的不是“模型能否生成一段好听的回复”，�
 
 ## 运行方式
 
-页面方式：启动 Python API 和 Next.js，访问 `http://localhost:3000/evaluation`。可按任务类型筛选、选择 1 或 3 次试次、查看轨迹与失败原因，并导出版本化 JSON。配置外部 Python API 时由 Python 评分器打分；兼容模式使用语义一致的浏览器评分逻辑。
+页面方式：启动 Python API 和 Next.js，访问 `http://localhost:3000/validation?tab=evaluation`。可按任务类型筛选、选择 1 或 3 次试次、查看轨迹与失败原因，并导出版本化 JSON。配置外部 Python API 时由 Python 评分器打分；兼容模式使用语义一致的浏览器评分逻辑。
 
 Python CLI：
 

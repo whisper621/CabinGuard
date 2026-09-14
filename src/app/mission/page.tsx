@@ -1,5 +1,5 @@
-import MissionCockpit from "./MissionCockpit";
+import { redirect } from "next/navigation";
 
 export default function MissionPage() {
-  return <MissionCockpit />;
+  redirect("/");
 }

@@ -1,5 +1,5 @@
-import TwinLab from "./TwinLab";
+import { redirect } from "next/navigation";
 
 export default function TwinLabPage() {
-  return <TwinLab />;
+  redirect("/validation?tab=scenario");
 }

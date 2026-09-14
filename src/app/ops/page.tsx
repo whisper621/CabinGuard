@@ -1,3 +1,3 @@
-import OpsCenter from "./OpsCenter";
+import { redirect } from "next/navigation";
 
-export default function OpsPage() { return <OpsCenter />; }
+export default function OpsPage() { redirect("/validation?tab=trace"); }

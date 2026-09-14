@@ -2,7 +2,7 @@
 
 ## 1. v0.6 主链路与兼容运行方式
 
-v0.6 的主演示位于 `/mission`：FastAPI 先把用户目标编译为可信 TaskPlan，再让主 Agent 在白名单内规划；每次工具调用必须通过乘员 ABAC 与 VSS 约束，计划、策略和回执写入 SQLite 证据账本。`/twin-lab` 用 WebSocket 展示时序车辆状态，`/ops` 负责证据复盘。经典主页和 `/agent-lab` 继续保留；Next.js Route Handlers 仅是兼容回退，不包含 v0.6 全部能力。
+v0.6 的统一主入口为 `/mission`：FastAPI 先把用户目标编译为可信 TaskPlan，再让主 Agent 在白名单内规划；每次工具调用必须通过乘员 ABAC 与 VSS 约束，计划、策略和回执写入 SQLite 证据账本。`/twin-lab` 用 WebSocket 展示场景仿真，`/ops` 负责执行追溯，`/evaluation` 负责可靠性评测，`/system-lab` 展示运行时技术架构。根路径和旧版交互台会重定向至主入口，避免出现多套产品主页。
 
 ```text
 用户请求

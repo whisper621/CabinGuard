@@ -1,5 +1,5 @@
-import CabinDemo from "./CabinDemo";
+import { redirect } from "next/navigation";
 
 export default function Page() {
-  return <CabinDemo />;
+  redirect("/mission");
 }

@@ -19,7 +19,9 @@ GEOCODER_SOURCE = "OpenStreetMap Nominatim"
 ROUTER_SOURCE = "OSRM · OpenStreetMap"
 DEFAULT_GEOCODER_URL = "https://nominatim.openstreetmap.org/search"
 DEFAULT_ROUTER_URL = "https://router.project-osrm.org"
+FALLBACK_ROUTER_URL = "https://routing.openstreetmap.de/routed-car"
 MAX_ROUTE_POINTS = 100
+MAX_VISIBLE_ROUTE_STEPS = 20
 
 
 class NavigationProviderError(RuntimeError):
@@ -68,7 +70,7 @@ def _step_instruction(step: dict[str, Any]) -> str | None:
     maneuver = step.get("maneuver") if isinstance(step.get("maneuver"), dict) else {}
     maneuver_type = str(maneuver.get("type") or "continue")
     modifier = str(maneuver.get("modifier") or "")
-    road = str(step.get("name") or "未命名道路")
+    road = " ".join(str(step.get("name") or "").split())
     distance = float(step.get("distance") or 0)
     direction_map = {
         "left": "左转",
@@ -90,7 +92,34 @@ def _step_instruction(step: dict[str, Any]) -> str | None:
         action = direction_map.get(modifier, "继续行驶")
     if action == "到达目的地":
         return action
-    return f"{action}进入{road}，行驶约 {round(distance)} 米"
+    distance_text = (
+        f"{distance / 1000:.1f} 公里" if distance >= 1000 else f"{max(1, round(distance))} 米"
+    )
+    if road:
+        return f"{action}进入{road}，行驶约 {distance_text}"
+    fallback_road = (
+        "匝道"
+        if maneuver_type in {"on ramp", "off ramp", "fork", "merge", "exit roundabout"}
+        else "连接道路"
+    )
+    return f"{action}，沿{fallback_road}行驶约 {distance_text}"
+
+
+def _route_step_summary(raw_steps: list[object]) -> list[str]:
+    instructions = [
+        instruction
+        for step in raw_steps
+        if isinstance(step, dict) and (instruction := _step_instruction(step))
+    ]
+    if len(instructions) <= MAX_VISIBLE_ROUTE_STEPS:
+        return instructions
+    head_count = MAX_VISIBLE_ROUTE_STEPS - 6
+    omitted = len(instructions) - head_count - 5
+    return [
+        *instructions[:head_count],
+        f"中间 {omitted} 个细分转向已折叠，可在 OpenStreetMap 核对完整路线",
+        *instructions[-5:],
+    ]
 
 
 def _normalize_place_query(query: str) -> str:
@@ -122,9 +151,11 @@ class NavigationProvider:
         self.geocoder_url = geocoder_url or os.getenv(
             "CABINGUARD_GEOCODER_URL", DEFAULT_GEOCODER_URL
         )
-        self.router_url = (
-            router_url or os.getenv("CABINGUARD_ROUTER_URL", DEFAULT_ROUTER_URL)
-        ).rstrip("/")
+        configured_router_url = router_url or os.getenv("CABINGUARD_ROUTER_URL")
+        self.router_url = (configured_router_url or DEFAULT_ROUTER_URL).rstrip("/")
+        self.router_urls = [self.router_url]
+        if configured_router_url is None and FALLBACK_ROUTER_URL != self.router_url:
+            self.router_urls.append(FALLBACK_ROUTER_URL)
         self.transport = transport
         self._search_cache: dict[str, tuple[float, list[dict[str, object]]]] = {}
         self._geocoder_lock = asyncio.Lock()
@@ -227,21 +258,29 @@ class NavigationProvider:
         }
         if route_preference == "avoid_highways":
             params["exclude"] = "motorway"
-        try:
-            async with httpx.AsyncClient(
-                timeout=httpx.Timeout(18.0, connect=8.0),
-                transport=self.transport,
-                trust_env=True,
-            ) as client:
-                response = await client.get(
-                    f"{self.router_url}/route/v1/driving/{coordinates}",
-                    params=params,
-                    headers=self._headers(),
-                )
-                response.raise_for_status()
-                payload = response.json()
-        except (httpx.HTTPError, ValueError) as error:
-            raise NavigationProviderError(f"道路算路服务暂时不可用：{error}") from error
+        payload: object | None = None
+        last_error: Exception | None = None
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(18.0, connect=8.0),
+            transport=self.transport,
+            trust_env=True,
+        ) as client:
+            for router_url in self.router_urls:
+                try:
+                    response = await client.get(
+                        f"{router_url}/route/v1/driving/{coordinates}",
+                        params=params,
+                        headers=self._headers(),
+                    )
+                    response.raise_for_status()
+                    payload = response.json()
+                    break
+                except (httpx.HTTPError, ValueError) as error:
+                    last_error = error
+        if payload is None:
+            raise NavigationProviderError(
+                f"道路算路服务暂时不可用：{last_error or '所有服务端点均无响应'}"
+            ) from last_error
 
         if not isinstance(payload, dict) or payload.get("code") != "Ok":
             message = payload.get("message") if isinstance(payload, dict) else None
@@ -264,11 +303,7 @@ class NavigationProvider:
         legs = primary.get("legs") if isinstance(primary.get("legs"), list) else []
         first_leg = legs[0] if legs and isinstance(legs[0], dict) else {}
         raw_steps = first_leg.get("steps") if isinstance(first_leg.get("steps"), list) else []
-        steps = [
-            instruction
-            for step in raw_steps[:8]
-            if isinstance(step, dict) and (instruction := _step_instruction(step))
-        ]
+        steps = _route_step_summary(raw_steps)
 
         alternatives: list[RouteAlternative] = []
         for index, route in enumerate(routes[:3]):
@@ -276,7 +311,7 @@ class NavigationProvider:
                 continue
             alternatives.append(
                 RouteAlternative(
-                    label="智能推荐" if index == 0 else f"备选路线 {index}",
+                    label="OSRM 主路线" if index == 0 else f"OSRM 备选路线 {index}",
                     distanceKm=round(float(route.get("distance") or 0) / 1000, 1),
                     etaMinutes=max(1, round(float(route.get("duration") or 0) / 60)),
                 )

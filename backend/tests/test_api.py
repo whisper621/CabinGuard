@@ -69,6 +69,27 @@ def test_session_exposes_occupant_role_and_state_version() -> None:
     assert response.json()["stateVersion"] == 1
 
 
+def test_resumes_existing_session_without_resetting_vehicle() -> None:
+    session = store.create_session("moving", occupant_role="front_passenger")
+    session.vehicle = session.vehicle.model_copy(update={"battery": 27})
+    store.update_vehicle(session, session.vehicle)
+
+    response = client.get(f"/api/cabin/session/{session.id}")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["sessionId"] == session.id
+    assert payload["scenario"] == "moving"
+    assert payload["occupantRole"] == "front_passenger"
+    assert payload["vehicle"]["battery"] == 27
+
+
+def test_resume_missing_session_returns_404() -> None:
+    response = client.get("/api/cabin/session/00000000-0000-0000-0000-000000000000")
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "session_not_found"
+
+
 def test_previews_task_plan_without_model_call() -> None:
     response = client.post("/api/cabin/plan", json={"text": "空调调到22度并导航去故宫"})
     assert response.status_code == 200

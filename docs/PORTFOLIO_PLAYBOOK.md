@@ -47,13 +47,13 @@ CabinGuard 是一个面向智能座舱的可信任务 Agent MVP：让大模型�
 
 ## 简历项目描述
 
-> **CabinGuard｜可信智能座舱协同 Agent**  使用 Python、FastAPI、Pydantic、SQLite、WebSocket、Next.js 与 DeepSeek Tool Calling，将跨域需求编译为带依赖、风险、权限和工具白名单的 TaskPlan；设计 1 个主编排 Agent、1 个导航领域 Agent 边界与 4 个确定性服务，以四类乘员及设备/座位 ABAC、25 个 VSS 对齐信号、5 条声明式约束、状态版本和因果证据账本保障执行可信；接入 Nominatim/OSRM 真实地点与道路数据，构建大地图智能座舱、三合一验证中心、24 个组合契约、15 个模型任务和 130 条双栈自动测试。
+> **CabinGuard｜可信智能座舱协同 Agent**  使用 Python、FastAPI、Pydantic、SQLite、WebSocket、Next.js 与 DeepSeek Tool Calling，将跨域需求编译为带依赖、风险、权限和工具白名单的 TaskPlan；设计 1 个主编排 Agent、1 个导航领域 Agent 边界与 4 个确定性服务，以四类乘员及设备/座位 ABAC、25 个 VSS 对齐信号、5 条声明式约束、状态版本和因果证据账本保障执行可信；接入 Nominatim/OSRM 真实地点与道路数据，构建大地图智能座舱、三合一验证中心、24 个组合契约、15 个模型任务和 146 条双栈自动测试。
 
 可拆成三条简历要点：
 
 - 从车载助手“误执行、忽略上下文、无依据报成功”问题出发，定义导航、舒适、车身、补能和记忆任务及成功/安全指标，完成可交互 MVP。
 - 设计“LLM 规划层 + 服务端可信工具层”，以 25 个 VSS 对齐信号和声明式规则约束 14 个工具的参数、前置、地图候选、风险动作与反馈。
-- 构建 Python/FastAPI Agent API、TaskPlan、Policy Kernel、SQLite 证据账本与 WebSocket 时序信号流，并用 130 条双栈自动测试和 CI 固化关键安全及评分规则。
+- 构建 Python/FastAPI Agent API、口语归一化与安全默认补参、TaskPlan、Policy Kernel、SQLite 证据账本与 WebSocket 时序信号流，并用 146 条双栈自动测试和 CI 固化关键安全及评分规则。
 
 ## 5 分钟演示脚本
 

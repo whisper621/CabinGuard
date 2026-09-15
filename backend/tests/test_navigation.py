@@ -111,10 +111,67 @@ def test_search_and_plan_live_route_without_exposing_coordinates_to_model() -> N
     assert planned.vehicle.route_eta_minutes == 48
     assert len(planned.vehicle.route_polyline) == 3
     assert len(planned.vehicle.route_alternatives) == 2
+    assert planned.vehicle.route_alternatives[0].label == "OSRM 主路线"
+    assert "未命名道路" not in "".join(planned.vehicle.route_steps)
     assert planned.vehicle.estimated_arrival_battery is not None
     assert "latitude" not in planned.output
     assert "longitude" not in planned.output
     assert "116.4836" not in json.dumps(planned.output, ensure_ascii=False)
+
+
+def test_unnamed_route_step_uses_truthful_generic_road_label() -> None:
+    from cabinguard.navigation import _step_instruction
+
+    instruction = _step_instruction(
+        {"distance": 1438, "name": "", "maneuver": {"type": "depart", "modifier": "straight"}}
+    )
+    assert instruction == "出发，沿连接道路行驶约 1.4 公里"
+
+
+def test_long_route_summary_keeps_arrival_and_marks_omitted_steps() -> None:
+    from cabinguard.navigation import _route_step_summary
+
+    raw_steps = [
+        {"distance": 100, "name": f"道路 {index}", "maneuver": {"type": "turn", "modifier": "left"}}
+        for index in range(24)
+    ]
+    raw_steps.append({"distance": 0, "name": "", "maneuver": {"type": "arrive"}})
+
+    summary = _route_step_summary(raw_steps)
+
+    assert len(summary) == 20
+    assert "细分转向已折叠" in summary[-6]
+    assert summary[-1] == "到达目的地"
+
+
+def test_default_router_falls_back_when_primary_endpoint_fails() -> None:
+    attempted_hosts: list[str] = []
+
+    def fallback_transport(request: httpx.Request) -> httpx.Response:
+        attempted_hosts.append(str(request.url.host))
+        if request.url.host == "router.project-osrm.org":
+            return httpx.Response(503, request=request)
+        return provider_transport(request)
+
+    session = SessionStore().create_session()
+    provider = NavigationProvider(transport=httpx.MockTransport(fallback_transport))
+    result = asyncio.run(
+        provider.plan_route(
+            session.vehicle,
+            {
+                "name": "昌平区人民政府",
+                "latitude": 40.2207,
+                "longitude": 116.2312,
+            },
+            "fastest",
+        )
+    )
+
+    assert attempted_hosts == [
+        "router.project-osrm.org",
+        "routing.openstreetmap.de",
+    ]
+    assert result["route_distance_km"] == 39.1
 
 
 def test_browser_location_requires_external_routing_consent() -> None:

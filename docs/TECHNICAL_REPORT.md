@@ -41,7 +41,7 @@ CabinGuard 围绕可信智能座舱任务闭环完成了以下核心产品实现
 | Agent 框架 | `@openai/agents` 的 RealtimeAgent 与工具定义，用于可选 Realtime 语音模式 |
 | 兼容服务端 | Next.js Route Handlers、Zod、Undici；未连接 Python API 时提供单服务回退 |
 | 运行状态 | 30 分钟服务端会话包含车辆状态、版本、乘员角色、偏好和最近 10 条成功导航回执；SQLite 持久化演示证据，但没有账号级数据持久化或 Redis |
-| 语音能力 | 浏览器 Speech Recognition 做中文语音输入，Speech Synthesis 做结果播报；Realtime 语音是独立可选入口 |
+| 语音能力 | 浏览器 Speech Recognition 持续采集中文语音、跨短暂停顿续接并追加文本，Speech Synthesis 做结果播报；Realtime 语音是独立可选入口 |
 
 ## 4. 三条运行链路
 
@@ -82,7 +82,7 @@ DeepSeek 模型
 
 单个请求最多执行 6 个模型轮次；单轮模型请求失败时服务端最多重试 3 次，前端 Agent Lab 和评测页在收到 502 时会额外重试整条请求 1 次。这些限制用于避免无限工具循环、外部网络瞬断和异常成本。
 
-Agent Lab 还在主链路外侧补充了三类交互上下文：浏览器中文语音识别把结果放入输入框供用户复核，系统语音合成可播报 Agent 回复；用户点击授权后，WGS84 坐标、精度与外部算路同意随新会话写入服务端；普通目的地由 Nominatim 检索，道路路线由 OSRM 计算，界面使用 Leaflet/OpenStreetMap 展示距离、ETA、步骤、备选路线和预计到达电量。精确用户坐标与道路折线只保留在服务端会话和返回给浏览器的车辆状态，不进入大模型工具回执。
+Agent Lab 还在主链路外侧补充了三类交互上下文：浏览器中文语音识别以持续模式采集，短暂停顿导致识别器结束时自动续接，结果追加到已有输入并由用户点击“停止”后复核，系统语音合成可播报 Agent 回复；用户点击授权后，WGS84 坐标、精度与外部算路同意随新会话写入服务端；普通目的地由 Nominatim 检索，道路路线由带双端点故障切换的 OSRM 适配器计算，界面使用 Leaflet/OpenStreetMap 展示距离、ETA、步骤、备选路线和预计到达电量。精确用户坐标与道路折线只保留在服务端会话和返回给浏览器的车辆状态，不进入大模型工具回执。
 
 ### 4.3 OpenAI Realtime：可选语音链路
 
@@ -176,11 +176,11 @@ Reliability Lab 从共享 JSON 加载 15 个 Base、Hallucination、Disambiguati
 
 | 验证项 | 结果 | 说明 |
 | --- | --- | --- |
-| `python -m pytest` | 通过 | 91 条 Python 测试覆盖任务图、ABAC、证据、WebSocket、多轮编排、工具、VSS、记忆、地图与评测 |
+| `python -m pytest` | 通过 | 103 条 Python 测试覆盖口语归一化、安全默认补参、组合任务回执回退、任务图、ABAC、证据、会话恢复、WebSocket、多轮编排、工具、VSS、记忆、OSRM 双端点容错、地图与评测 |
 | `python -m cabinguard demo` | 通过 | 不依赖模型密钥完成 Python 工具读取与写入闭环 |
 | Python FastAPI 冒烟测试 | HTTP 200 | `/api/health` 返回 `runtime=python`，可创建降雨场景会话 |
 | `npm run build` | 通过 | Next.js 编译、类型检查、静态页生成均通过 |
-| `npm run test:run` | 通过 | 39 条确定性测试覆盖会话 TTL、浏览器定位、坐标隐私、路线状态、限流、确认语义、工具参数、读取前置、安全拦截和导航授权 |
+| `npm run test:run` | 通过 | 43 条确定性测试覆盖语音追加、对话档案、会话 TTL、浏览器定位、坐标隐私、路线状态、限流、确认语义、工具参数、读取前置、安全拦截和导航授权 |
 | `npm run lint` / `npm run typecheck` | 通过 | ESLint 与 TypeScript 纳入统一质量门禁 |
 | GitHub Actions CI | 已配置 | 无供应商密钥也可执行 lint、typecheck、unit tests 和 build |
 | 主页、Agent Lab、评测页、Realtime 页面 | HTTP 200 | Realtime 页面为“未配置密钥”的提示页 |
@@ -203,7 +203,7 @@ Reliability Lab 从共享 JSON 加载 15 个 Base、Hallucination、Disambiguati
 2. **只有演示级限流，没有身份认证。** 当前 DeepSeek Agent 路由按来源提供内存窗口限流，但没有用户身份、配额、持久化预算或分布式限流，公开部署仍有 API 成本和滥用风险。
 3. **业务状态没有持久化。** 会话与车辆状态仍是内存数据；v0.6 仅将演示证据写入 SQLite，尚无账号级用户数据治理。
 4. **Realtime 尚未启用验证。** 当前只有 DeepSeek 主链路可实际演示。
-5. **模型行为评测尚未成为自动门禁。** 确定性规则已有 91 条 Pytest 与 39 条 Vitest，24 条组合契约进入本地门禁；15 个模型任务仍需主动运行并保存报告。
+5. **模型行为评测尚未成为自动门禁。** 确定性规则已有 103 条 Pytest 与 43 条 Vitest，24 条组合契约进入本地门禁；15 个模型任务仍需主动运行并保存报告。
 6. **跨链路参数不完全一致。** DeepSeek 空调风量为 1–5 档，Realtime 为 1–7 档；高速确认字段分别为 `confirmed` 与 `high_speed_confirmed`。后续接入真实后端前应统一契约。
 7. **确认状态仍不是生产级授权。** 高速天窗确认已绑定会话、动作参数和 2 分钟有效期；生产环境仍应绑定任务 ID、车端签名、用户身份和审计记录。
 8. **文案仍有语义歧义。** 天窗成功路径返回 `sunshade_percent: 100`，但模型曾描述为“遮阳帘保持全闭”；应在产品定义中统一百分比代表“开度”还是“闭合度”，并由前端模板化结果避免模型自行表述。

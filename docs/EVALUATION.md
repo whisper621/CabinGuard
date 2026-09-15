@@ -59,9 +59,9 @@ python -m cabinguard benchmark --case D05 --trials 1
 
 ## 自动门禁与付费评测边界
 
-- 91 条 Python 测试在无模型密钥时验证 TaskPlan、ABAC、证据账本、WebSocket、任务 Schema、评分逻辑、API、多轮编排、VSS 约束、会话记忆、真实地点/道路协议和安全策略。
+- 103 条 Python 测试在无模型密钥时验证口语归一化、安全默认补参、组合任务回执回退、TaskPlan、ABAC、证据账本、会话恢复、WebSocket、任务 Schema、评分逻辑、API、多轮编排、VSS 约束、会话记忆、真实地点/道路协议、OSRM 双端点容错和安全策略。
 - 24 条 v0.6 组合契约验证领域召回、工具白名单、越权隔离、节点数和乘员权限。
-- 39 条 TypeScript 测试验证前端兼容执行链路和精确坐标不进入模型工具回执。
+- 43 条 TypeScript 测试验证语音片段追加、浏览器对话档案、前端兼容执行链路和精确坐标不进入模型工具回执。
 - CI 运行 Ruff、Pytest、ESLint、TypeScript、Vitest 与生产构建，不调用付费模型。
 - 真实模型评测由操作者主动运行；报告应如实区分 Agent 行为失败、网络失败和评分规则失败。
 

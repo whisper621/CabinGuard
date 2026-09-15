@@ -21,6 +21,7 @@ from .policy_kernel import OccupantRole
 from .reliability import TrajectoryStep, evaluate_trial, load_suite
 from .session import SESSION_TTL_SECONDS, SessionStore
 from .signal_player import EVENT_LABELS, SignalEventName, apply_signal_event
+from .utterance import normalize_user_utterance
 
 load_dotenv(".env.local")
 load_dotenv(".env")
@@ -227,12 +228,32 @@ async def create_session(payload: SessionRequest, request: Request) -> JSONRespo
     )
 
 
+@app.get("/api/cabin/session/{session_id}")
+async def resume_session(session_id: UUID) -> JSONResponse:
+    session = store.get_session(str(session_id))
+    if session is None:
+        return JSONResponse(
+            status_code=404,
+            content={"error": {"code": "session_not_found", "message": "演示会话已过期"}},
+        )
+    return JSONResponse(
+        {
+            "sessionId": session.id,
+            "scenario": session.scenario,
+            "vehicle": session.vehicle.public_dict(),
+            "expiresInSeconds": SESSION_TTL_SECONDS,
+            "occupantRole": session.occupant_role,
+            "stateVersion": session.state_version,
+        }
+    )
+
+
 @app.post("/api/cabin/plan")
 async def preview_plan(payload: PlanRequest, request: Request) -> JSONResponse:
     limited = _rate_limit(request, "plan")
     if limited:
         return limited
-    return JSONResponse(compile_task_plan(payload.text).public_dict())
+    return JSONResponse(compile_task_plan(normalize_user_utterance(payload.text)).public_dict())
 
 
 @app.get("/api/cabin/evidence/{session_id}")

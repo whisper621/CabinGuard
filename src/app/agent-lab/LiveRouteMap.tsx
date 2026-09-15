@@ -23,6 +23,9 @@ export default function LiveRouteMap({
 }: LiveRouteMapProps) {
   const elementRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<import("leaflet").Map | null>(null);
+  const leafletRef = useRef<typeof import("leaflet") | null>(null);
+  const routeLayerRef = useRef<import("leaflet").LayerGroup | null>(null);
+  const [mapReady, setMapReady] = useState(false);
   const [tileError, setTileError] = useState(false);
 
   useEffect(() => {
@@ -30,7 +33,6 @@ export default function LiveRouteMap({
 
     void import("leaflet").then((L) => {
       if (cancelled || !elementRef.current) return;
-      mapRef.current?.remove();
       setTileError(false);
 
       const map = L.map(elementRef.current, {
@@ -39,6 +41,7 @@ export default function LiveRouteMap({
         preferCanvas: true,
       });
       mapRef.current = map;
+      leafletRef.current = L;
 
       L.control.zoom({ position: "bottomright" }).addTo(map);
       L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -48,54 +51,67 @@ export default function LiveRouteMap({
       })
         .on("tileerror", () => setTileError(true))
         .addTo(map);
-
-      const start: [number, number] = [latitude, longitude];
-      const route = routePolyline.map(
-        (point) => [point.latitude, point.longitude] as [number, number],
-      );
-      const endpoint = destinationLatitude !== null && destinationLongitude !== null
-        ? [destinationLatitude, destinationLongitude] as [number, number]
-        : route.at(-1);
-
-      L.circleMarker(start, {
-        radius: 8,
-        color: "#dbeafe",
-        weight: 4,
-        fillColor: "#2563eb",
-        fillOpacity: 1,
-      }).bindTooltip(Object.assign(document.createElement("span"), { textContent: "当前位置" })).addTo(map);
-
-      if (route.length >= 2) {
-        L.polyline(route, { color: "#0f172a", weight: 11, opacity: 0.5 }).addTo(map);
-        const line = L.polyline(route, {
-          color: "#38bdf8",
-          weight: 6,
-          opacity: 0.95,
-          lineCap: "round",
-          lineJoin: "round",
-        }).addTo(map);
-        map.fitBounds(line.getBounds(), { padding: [42, 42], maxZoom: 15 });
-      } else {
-        map.setView(start, 11);
-      }
-
-      if (endpoint) {
-        L.circleMarker(endpoint, {
-          radius: 9,
-          color: "#d1fae5",
-          weight: 4,
-          fillColor: "#10b981",
-          fillOpacity: 1,
-        }).bindTooltip(Object.assign(document.createElement("span"), { textContent: destination || "目的地" })).addTo(map);
-      }
+      setMapReady(true);
     });
 
     return () => {
       cancelled = true;
+      routeLayerRef.current = null;
+      mapRef.current?.off();
       mapRef.current?.remove();
       mapRef.current = null;
+      leafletRef.current = null;
     };
-  }, [destination, destinationLatitude, destinationLongitude, latitude, longitude, routePolyline]);
+  }, []);
+
+  useEffect(() => {
+    const L = leafletRef.current;
+    const map = mapRef.current;
+    if (!mapReady || !L || !map) return;
+
+    routeLayerRef.current?.remove();
+    const layer = L.layerGroup().addTo(map);
+    routeLayerRef.current = layer;
+    const start: [number, number] = [latitude, longitude];
+    const route = routePolyline.map(
+      (point) => [point.latitude, point.longitude] as [number, number],
+    );
+    const endpoint = destinationLatitude !== null && destinationLongitude !== null
+      ? [destinationLatitude, destinationLongitude] as [number, number]
+      : route.at(-1);
+
+    L.circleMarker(start, {
+      radius: 8,
+      color: "#dbeafe",
+      weight: 4,
+      fillColor: "#2563eb",
+      fillOpacity: 1,
+    }).bindTooltip(Object.assign(document.createElement("span"), { textContent: "当前位置" })).addTo(layer);
+
+    if (route.length >= 2) {
+      L.polyline(route, { color: "#0f172a", weight: 11, opacity: 0.5 }).addTo(layer);
+      const line = L.polyline(route, {
+        color: "#38bdf8",
+        weight: 6,
+        opacity: 0.95,
+        lineCap: "round",
+        lineJoin: "round",
+      }).addTo(layer);
+      map.fitBounds(line.getBounds(), { padding: [42, 42], maxZoom: 15 });
+    } else {
+      map.setView(start, 11);
+    }
+
+    if (endpoint) {
+      L.circleMarker(endpoint, {
+        radius: 9,
+        color: "#d1fae5",
+        weight: 4,
+        fillColor: "#10b981",
+        fillOpacity: 1,
+      }).bindTooltip(Object.assign(document.createElement("span"), { textContent: destination || "目的地" })).addTo(layer);
+    }
+  }, [destination, destinationLatitude, destinationLongitude, latitude, longitude, mapReady, routePolyline]);
 
   return (
     <div className="relative h-full min-h-[380px] w-full overflow-hidden bg-slate-900">

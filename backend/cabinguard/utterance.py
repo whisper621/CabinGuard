@@ -1,6 +1,7 @@
 """Deterministic normalization and slot checks for spoken cabin commands."""
 
 import re
+from collections.abc import Sequence
 
 _LEADING_CONNECTORS = re.compile(r"^(?:(?:并且|然后|还有|同时|顺便|再)\s*)+")
 _PUNCTUATION = re.compile(r"[，,。；;！？!?、]+")
@@ -47,7 +48,8 @@ def _has_seat_level(text: str) -> bool:
 def _has_window_zone(text: str) -> bool:
     return bool(
         re.search(
-            r"主驾|驾驶位|司机位|副驾|前排乘客|左后|后排左|右后|后排右|全部车窗|所有车窗|全车车窗",
+            r"主驾|驾驶位|司机位|副驾|前排乘客|左后|后排左|右后|后排右|"
+            r"全部车窗|所有车窗|全车车窗|四个车窗|四窗",
             text,
         )
     )
@@ -73,7 +75,14 @@ def cabin_device_clarification(text: str) -> str | None:
     window_action = "车窗" in text and bool(
         re.search(r"打开|开启|开到|调到|关闭|关上|关掉", text)
     )
-    door_action = bool(re.search(r"打开车门|开启车门|关闭车门|关上车门|开门|关门", text))
+    door_action = bool(
+        re.search(r"(?:打开|开启|关闭|关上).{0,6}车门|打开车门|开启车门|开门|关门", text)
+    )
+    generic_media_play = bool(
+        re.fullmatch(r"(?:请|麻烦)?(?:给我)?(?:播放|放)(?:一下|音乐|歌曲)?(?:吧)?", text)
+    )
+    fragrance_action = "香氛" in text and bool(re.search(r"打开|开启", text))
+    generic_seat_adjust = "座椅" in text and bool(re.search(r"调一下|调整", text)) and not seat_action
 
     if seat_action:
         seat_parts: list[str] = []
@@ -95,14 +104,63 @@ def cabin_device_clarification(text: str) -> str | None:
 
     if door_action and not _has_window_zone(text):
         missing.append("目标车门（主驾/副驾/左后/右后）")
+    if generic_media_play:
+        missing.append("播放内容（歌名、歌手或音乐风格）")
+    if fragrance_action and not re.search(r"森林|海洋|柑橘", text):
+        missing.append("香氛类型（森林/海洋/柑橘）")
+    if generic_seat_adjust:
+        missing.append("座椅动作和参数（如主驾通风 2 挡）")
 
     if not missing:
         return None
     details = "；".join(missing)
-    return (
-        f"我已识别到组合任务，但为避免只执行其中一部分，暂未操作。请补充{details}。"
-        "例如：打开主驾座椅通风 2 挡，开启紫色氛围灯，并把主驾车窗打开 20%。"
+    return f"我已识别到任务，但为避免误操作，暂未执行。请补充{details}，补充后我会继续。"
+
+
+def resolve_contextual_followup(text: str, history: Sequence[dict[str, str]]) -> str:
+    """Resolve a narrow multi-turn slot answer without letting history invent new work."""
+
+    if not re.fullmatch(r"(?:主驾|驾驶位|司机位|副驾|前排乘客|左后|后排左|右后|后排右)(?:车门)?", text):
+        return text
+    previous_user = next(
+        (
+            str(item.get("content") or "")
+            for item in reversed(history)
+            if item.get("role") == "user"
+        ),
+        "",
     )
+    if not re.search(r"打开车门|开启车门|关闭车门|关上车门|开门|关门", previous_user):
+        return text
+    action = "关闭" if re.search(r"关闭|关上|关门", previous_user) else "打开"
+    target = text if text.endswith("车门") else f"{text}车门"
+    return f"{action}{target}"
+
+
+def deterministic_climate_tool_inputs(
+    text: str,
+    *,
+    target_temperature_c: float,
+    fan_level: int,
+    circulation: str,
+) -> list[tuple[str, dict[str, object]]]:
+    """Compile explicit climate slots while preserving unspecified current settings."""
+
+    if not re.search(r"空调|温度|风量|内循环|外循环", text):
+        return []
+    temperature = re.search(r"(?:调到|设为|设置为|保持)?\s*(1[6-9]|2\d|30)\s*(?:度|℃)", text)
+    fan = re.search(r"风量.{0,5}?([1-5一二三四五])\s*(?:档|挡)?", text)
+    explicit_circulation = "外循环" if "外循环" in text else "内循环" if "内循环" in text else None
+    if not (temperature or fan or explicit_circulation):
+        return []
+    number_map = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5}
+    raw_fan = fan.group(1) if fan else None
+    arguments: dict[str, object] = {
+        "target_temperature_c": float(temperature.group(1)) if temperature else target_temperature_c,
+        "fan_level": number_map.get(raw_fan, int(raw_fan) if raw_fan and raw_fan.isdigit() else fan_level),
+        "circulation": explicit_circulation or circulation,
+    }
+    return [("get_climate_state", {}), ("set_climate", arguments)]
 
 
 def resolve_cabin_device_defaults(
@@ -213,7 +271,9 @@ def deterministic_cabin_tool_inputs(
                 "control_cabin_device",
                 {
                     "device": "window",
-                    "zone": "all" if re.search(r"全部车窗|所有车窗|全车车窗", text) else zone,
+                    "zone": "all"
+                    if re.search(r"全部车窗|所有车窗|全车车窗|四个车窗|四窗", text)
+                    else zone,
                     "action": "set_position",
                     "value": _window_position(text, speed_kmh),
                 },
@@ -280,10 +340,12 @@ def deterministic_cabin_tool_inputs(
             if brightness:
                 light_input["value"] = min(100, int(brightness.group(1) or brightness.group(2)))
         calls.append(("control_cabin_device", light_input))
-    if re.search(r"除霜|除雾", text) and not re.search(r"后视镜", text):
+    if re.search(r"除霜|除雾", text) and (
+        not re.search(r"后视镜", text) or re.search(r"前后|前挡|后挡|风挡|玻璃", text)
+    ):
         if re.search(r"后挡|后风挡", text):
             defrost_zone = "rear"
-        elif re.search(r"前后|全部|所有", text):
+        elif re.search(r"前后|全部|所有|都", text):
             defrost_zone = "all"
         else:
             defrost_zone = "front"
@@ -306,8 +368,57 @@ def _media_query(text: str) -> str:
         text,
     )
     query = (match.group(1) if match else "").strip(" 一下点首的")
-    query = re.sub(r"(?:音乐|歌曲)$", "", query).strip()
-    return query or "轻音乐"
+    if "轻音乐" in query and re.search(r"休息|放松|睡眠|舒缓", query):
+        return "轻音乐 放松"
+    if query in {"", "音乐", "歌曲", "歌"}:
+        return "轻音乐"
+    return query
+
+
+def order_deterministic_tool_inputs(
+    text: str,
+    calls: list[tuple[str, dict[str, object]]],
+) -> list[tuple[str, dict[str, object]]]:
+    """Keep independent deterministic actions in the order spoken by the user."""
+
+    def first_position(*keywords: str) -> int:
+        positions = [
+            text.find(keyword)
+            for keyword in keywords
+            if keyword and text.find(keyword) >= 0
+        ]
+        return min(positions) if positions else len(text) + 1
+
+    def position(call: tuple[str, dict[str, object]]) -> int:
+        name, arguments = call
+        if name in {"get_climate_state", "set_climate"}:
+            return first_position("空调", "温度", "风量", "内循环", "外循环")
+        if name == "control_cabin_device":
+            return first_position(
+                {
+                    "window": "车窗",
+                    "seat": "座椅",
+                    "ambient_light": "氛围灯",
+                    "defrost": "除霜",
+                }.get(str(arguments.get("device")), ""),
+                "除雾" if arguments.get("device") == "defrost" else "",
+            )
+        return first_position(
+            {
+                "control_sunroof": "天窗",
+                "control_door": "车门",
+                "control_wiper": "雨刷",
+                "control_mirror": "后视镜",
+                "control_air_quality": "空气",
+                "control_child_lock": "儿童锁",
+                "control_charge_port": "充电口",
+                "play_media": "播放",
+                "control_media": "音量",
+                "get_media_state": "播放",
+            }.get(name, ""),
+        )
+
+    return sorted(calls, key=position)
 
 
 def deterministic_extended_tool_inputs(text: str) -> list[tuple[str, dict[str, object]]]:
@@ -317,7 +428,23 @@ def deterministic_extended_tool_inputs(text: str) -> list[tuple[str, dict[str, o
     media_state_query = bool(
         re.search(r"(?:正在|现在|当前).*(?:播放|听).*(?:什么|哪首)|这是什么歌|歌名", text)
     )
-    if re.search(r"打开车门|开启车门|开门|关闭车门|关上车门|关门", text) and _has_window_zone(text):
+    if "天窗" in text and re.search(r"\d+\s*%|一半|半开|全开|完全打开|关闭|关上|关掉", text):
+        if re.search(r"关闭|关上|关掉", text):
+            target_percent = 0
+        elif re.search(r"一半|半开", text):
+            target_percent = 50
+        elif re.search(r"全开|完全打开", text):
+            target_percent = 100
+        else:
+            match = re.search(r"(\d{1,3})\s*%", text)
+            target_percent = min(100, int(match.group(1))) if match else 0
+        calls.append(
+            (
+                "control_sunroof",
+                {"target_percent": target_percent, "confirmed": False},
+            )
+        )
+    if re.search(r"(?:打开|开启|关闭|关上).{0,6}车门|开门|关门", text) and _has_window_zone(text):
         calls.append(
             (
                 "control_door",

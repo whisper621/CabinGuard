@@ -3,25 +3,25 @@ import SystemLab from "../system-lab/SystemLab";
 
 const productFlow = [
   ["01", "自然交互", "用户以中文文字或语音表达跨域目标，只面对一个统一座舱助手。"],
-  ["02", "任务编排", "主智能体生成带依赖、风险、权限和工具白名单的 TaskPlan。"],
+  ["02", "任务编排", "确定性编译器将目标转换为带依赖、风险、权限和工具白名单的可信 TaskPlan；大模型只在边界内选择工具。"],
   ["03", "安全裁决", "ABAC 与车辆硬约束在 Python 服务端判定，模型不能绕过。"],
   ["04", "确定性执行", "导航、媒体、空气、车门、雨刷与舒适设备通过受控 Tool/API 执行。"],
   ["05", "证据闭环", "计划、裁决、回执、状态版本进入 SQLite 账本并可追溯评测。"],
 ] as const;
 
 const boundaries = [
-  ["真实联网", "浏览器定位、OpenStreetMap 地点检索、OSRM 道路算路、音乐试听与可选大模型规划。"],
+  ["真实联网", "浏览器定位、OpenStreetMap 地点/补能 POI、OSRM 道路算路、音乐试听与可选大模型工具选择。"],
   ["车辆沙箱", "座舱控制写入可观测的数字车辆状态，未连接真实 CAN 总线与量产 ECU。"],
   ["演示身份", "驾驶员、乘客、儿童、访客用于展示 ABAC；生产版仍需车机账户、设备证书与 HSM。"],
 ] as const;
 
 export default function ProjectPage() {
   return <main className="min-h-screen bg-[#070b14] text-slate-100">
-    <ProductNav active="/project" status={<span className="rounded-full border border-cyan-400/25 bg-cyan-400/10 px-2.5 py-1 text-[11px] font-medium text-cyan-200">v0.7 产品档案</span>} />
+    <ProductNav active="/project" status={<span className="rounded-full border border-cyan-400/25 bg-cyan-400/10 px-2.5 py-1 text-[11px] font-medium text-cyan-200">v0.8 产品档案</span>} />
     <div className="mx-auto max-w-[1720px] space-y-6 px-5 py-7 xl:px-8">
       <section className="grid gap-5 xl:grid-cols-[1.15fr_.85fr]">
-        <div className="rounded-[34px] border border-white/10 bg-[radial-gradient(circle_at_82%_18%,rgba(34,211,238,.15),transparent_32%),linear-gradient(120deg,#09192b,#101126)] p-7 md:p-10"><p className="text-xs tracking-[0.22em] text-cyan-300">PRODUCT STORY / 项目说明</p><h1 className="mt-4 max-w-4xl text-4xl font-semibold leading-tight md:text-6xl">一个入口完成跨域任务，<br /><span className="text-cyan-300">每次执行都有安全依据</span></h1><p className="mt-6 max-w-4xl text-base leading-8 text-slate-400">CabinGuard 面向复杂驾驶场景，将真实导航、座舱控制、角色权限、车辆状态和可靠性评测连接成一个可运行闭环。用户体验是一个主智能体，系统内部采用主编排器、导航领域智能体与确定性工具层协作。</p></div>
-        <aside className="grid grid-cols-2 gap-3">{[["3", "智能体边界", "主编排 + 导航 / 媒体"], ["6", "业务领域", "导航 / 舒适 / 安全 / 媒体 / 记忆 / 感知"], ["23", "注册工具", "严格参数与工具白名单"], ["41", "车辆信号", "VSS 风格语义层"], ["200", "场景矩阵", "8 场景 × 25 任务 × 口语变体"], ["364", "自动化测试", "43 前端 + 321 Python"]].map(([value, label, note]) => <div key={label} className="rounded-2xl border border-white/[0.08] bg-[#0b1423] p-4"><p className="text-3xl font-semibold text-white">{value}</p><p className="mt-2 text-sm font-medium text-cyan-200">{label}</p><p className="mt-1 text-xs leading-5 text-slate-500">{note}</p></div>)}</aside>
+        <div className="rounded-[34px] border border-white/10 bg-[radial-gradient(circle_at_82%_18%,rgba(34,211,238,.15),transparent_32%),linear-gradient(120deg,#09192b,#101126)] p-7 md:p-10"><p className="text-xs tracking-[0.22em] text-cyan-300">PRODUCT STORY / 项目说明</p><h1 className="mt-4 max-w-4xl text-4xl font-semibold leading-tight md:text-6xl">一个入口完成跨域任务，<br /><span className="text-cyan-300">每次执行都有安全依据</span></h1><p className="mt-6 max-w-4xl text-base leading-8 text-slate-400">CabinGuard 面向复杂驾驶场景，将真实导航、座舱控制、角色权限、车辆状态和可靠性评测连接成一个可运行闭环。用户体验是一个主智能体，系统内部由可信 TaskPlan 编译器、有边界的大模型工具选择、导航/媒体领域能力和确定性工具层协作。</p></div>
+        <aside className="grid grid-cols-2 gap-3">{[["3", "智能体边界", "主编排 + 导航 / 媒体"], ["6", "业务领域", "导航 / 舒适 / 安全 / 媒体 / 记忆 / 感知"], ["23", "注册工具", "严格参数与工具白名单"], ["41", "车辆信号", "VSS 风格语义层"], ["200", "场景矩阵", "25 个核心合同 × 8 种表达"], ["385", "自动化测试", "43 TypeScript + 342 Python"]].map(([value, label, note]) => <div key={label} className="rounded-2xl border border-white/[0.08] bg-[#0b1423] p-4"><p className="text-3xl font-semibold text-white">{value}</p><p className="mt-2 text-sm font-medium text-cyan-200">{label}</p><p className="mt-1 text-xs leading-5 text-slate-500">{note}</p></div>)}</aside>
       </section>
 
       <section className="rounded-[30px] border border-white/10 bg-[#0b1220] p-6"><div><p className="text-xs tracking-[0.18em] text-violet-300">END-TO-END LOOP / 产品闭环</p><h2 className="mt-2 text-2xl font-semibold">从用户目标到可审计结果</h2></div><div className="mt-6 grid gap-3 lg:grid-cols-5">{productFlow.map(([step, title, description]) => <article key={step} className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><span className="text-xs font-semibold text-cyan-300">{step}</span><h3 className="mt-3 font-semibold text-white">{title}</h3><p className="mt-2 text-sm leading-6 text-slate-500">{description}</p></article>)}</div></section>

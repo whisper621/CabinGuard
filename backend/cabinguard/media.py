@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import time
 from typing import Any
 
 import httpx
@@ -73,8 +74,13 @@ class MediaProvider:
             "CABINGUARD_MEDIA_FALLBACK_URL", DEEZER_SEARCH_URL
         )
         self.transport = transport
+        self._search_cache: dict[str, tuple[float, list[MediaTrack]]] = {}
 
     async def search(self, query: str, limit: int) -> list[MediaTrack]:
+        cache_key = " ".join(query.lower().split())
+        cached = self._search_cache.get(cache_key)
+        if cached and cached[0] > time.time():
+            return cached[1][:limit]
         errors: list[str] = []
         async with httpx.AsyncClient(
             timeout=httpx.Timeout(8.0, connect=4.0),
@@ -91,7 +97,7 @@ class MediaProvider:
                         "country": "CN",
                         "limit": str(limit),
                     },
-                    headers={"User-Agent": "CabinGuard/0.7 (+https://github.com/whisper621/CabinGuard)"},
+                    headers={"User-Agent": "CabinGuard/0.8 (+https://github.com/whisper621/CabinGuard)"},
                 )
                 response.raise_for_status()
                 payload: Any = response.json()
@@ -102,6 +108,7 @@ class MediaProvider:
                     if (track := _as_itunes_track(item)) is not None
                 ]
                 if tracks:
+                    self._search_cache[cache_key] = (time.time() + 24 * 60 * 60, tracks)
                     return tracks
             except (httpx.HTTPError, ValueError) as error:
                 errors.append(f"Apple: {error}")
@@ -110,16 +117,19 @@ class MediaProvider:
                 response = await client.get(
                     self.fallback_endpoint,
                     params={"q": query, "limit": str(limit)},
-                    headers={"User-Agent": "CabinGuard/0.7 (+https://github.com/whisper621/CabinGuard)"},
+                    headers={"User-Agent": "CabinGuard/0.8 (+https://github.com/whisper621/CabinGuard)"},
                 )
                 response.raise_for_status()
                 payload = response.json()
                 results = payload.get("data") if isinstance(payload, dict) else None
-                return [
+                tracks = [
                     track
                     for item in (results or [])
                     if (track := _as_deezer_track(item)) is not None
                 ]
+                if tracks:
+                    self._search_cache[cache_key] = (time.time() + 24 * 60 * 60, tracks)
+                return tracks
             except (httpx.HTTPError, ValueError) as error:
                 errors.append(f"Deezer: {error}")
 

@@ -94,7 +94,7 @@ def build_scenario_matrix() -> tuple[ScenarioContract, ...]:
                 )
             )
     if len(cases) != 200:
-        raise RuntimeError(f"v0.7 场景矩阵必须恰好包含 200 条，当前为 {len(cases)} 条")
+        raise RuntimeError(f"v0.8 场景矩阵必须恰好包含 200 条，当前为 {len(cases)} 条")
     return tuple(cases)
 
 
@@ -146,7 +146,7 @@ def scenario_matrix_summary() -> dict[str, object]:
     for case in cases:
         scenario_counts[case.scenario] = scenario_counts.get(case.scenario, 0) + 1
     return {
-        "version": "7.0.0",
+        "version": "8.0.0",
         "caseCount": len(scores),
         "passed": passed,
         "passRate": round(passed / len(scores), 3),

@@ -1,18 +1,19 @@
 # CabinGuard 系统架构与执行边界
 
-## 1. v0.7 主链路与兼容运行方式
+## 1. v0.8 主链路与兼容运行方式
 
-v0.7 的主演示统一位于 `/`：大地图作为工作画布，顶部只保留关键遥测，底部 Dock 收纳场景、温控、语音、媒体、车辆和路线入口；右侧主 Agent 承担统一交互。`/validation` 用三个页内标签承载 WebSocket 时序场景、SQLite 证据复盘和可靠性评测；`/project` 说明产品价值、真实边界与运行时能力注册表。旧地址只做兼容重定向，不再形成多个互相竞争的主页面。
+v0.8 的主演示统一位于 `/`：大地图作为工作画布，顶部只保留关键遥测，底部 Dock 收纳场景、温控、语音、媒体、车辆和路线入口；右侧 Driver Mode 只呈现统一对话、用户任务、偏好和历史。`/validation` 承载 WebSocket 时序场景、SQLite 证据复盘、策略与可靠性评测；`/project` 说明产品价值、真实边界与运行时能力注册表。旧地址只做兼容重定向。
 
 ```text
 用户请求
-  → FastAPI 会话（乘员角色 + stateVersion）
+  → FastAPI 请求生命周期（idempotencyKey + expectedStateVersion + timeout/cancel）
+  → 会话（乘员角色 + stateVersion + memory consent）
   → TaskPlan Compiler（节点 + 依赖 + 波次 + 风险 + allowedTools）
   → 主 Agent / Orchestrator
   → Policy Kernel（TaskPlan allowlist + ABAC）
-  → Navigation Domain Agent / Cabin Safety / Memory / System Service
+  → Navigation / Media Domain Boundary + Cabin Safety / Memory / Proactive Service
   → Pydantic + 41 个 VSS 信号 + 9 条声明式约束
-  → Vehicle Sandbox / Nominatim / OSRM
+  → Vehicle Sandbox / Nominatim / OSRM / Overpass / Media Catalog
   → SQLite Evidence Ledger + WebSocket Signal Stream + HMI
 ```
 
@@ -36,14 +37,16 @@ v0.7 的主演示统一位于 `/`：大地图作为工作画布，顶部只保�
 - 没有成功工具结果时，服务端阻止模型宣称副作用已经完成。
 - 单个请求最多执行 6 个模型轮次，防止失控循环和费用异常。
 - 高速天窗确认绑定到服务端会话，并在 2 分钟后失效；确认消息不再只依赖浏览器传入的对话文本。
-- 偏好写入与删除必须由本轮用户明确提出，且只保留在 30 分钟会话；行程记录只接受成功导航回执。
+- 每次 Agent 请求使用幂等键去重，期望状态版本不一致或已有任务执行时拒绝；单次最长 45 秒，并提供显式取消接口。网络重试复用同一幂等键。
+- 偏好写入与删除必须由本轮用户明确提出；默认只保留在 30 分钟会话。开启长期偏好还需单独 UI 授权，匿名本地配置默认 90 天 TTL，可查看、遗忘或撤销并删除。
+- 低电、雨天开窗、高 PM2.5 与结构化可视性事件只产生 `ProactiveSuggestion`；用户接受后重新进入同一可信执行链，不直接写车。
 
 ## 3. 可观测性
 
-每次请求写入 `plan.created`，每次调用写入 `policy.decision` 和 `tool.receipt`，场景仿真事件写入 `signal.injected`。Trace 关联 `planId`、`taskId`、领域、策略代码和执行前后 `stateVersion`；验证中心的“执行追溯”页可按会话筛选并查看 SQLite 原始证据。
+每次请求写入 `operation.started/completed/cancelled` 与 `plan.created`，每次调用写入 `policy.decision` 和 `tool.receipt`，场景仿真事件写入 `signal.injected`。Trace 关联 `planId`、`taskId`、领域、策略代码和执行前后 `stateVersion`；响应同时记录 `requestedModel` 与供应商返回的 `resolvedModel`。验证中心可按会话查看 SQLite 原始证据。
 
 ## 4. 数据边界
 
-车辆、天气、车控动作与充电站目录为本地模拟；普通地点由 Nominatim 检索，道路路线由 OSRM 计算并用 OpenStreetMap 瓦片展示。公共地图服务无 SLA，也不提供实时路况、车道级指引或量产导航能力。当前实现不连接真实 CAN 总线或车控系统，不能用于真实驾驶控制。后续接入真实系统时，应增加地图商业 SLA、身份认证、权限分级、幂等键、超时补偿、审计日志和车端网关。
+车辆、天气和车控动作为本地沙箱；普通地点由 Nominatim 检索，道路路线由 OSRM 计算，授权后的补能 POI 由 OpenStreetMap Overpass 查询。补能枪位、价格和营业状态不核验；服务失败时明确回退到 Demo Catalog。公共服务无 SLA，也不提供实时路况或车道级指引。当前不连接真实 CAN 或量产车控。本轮只增强软件原型的可信闭环，不实施 ROS2、KUKSA 或真实硬件接入。
 
-完整的权限、运行流程、变量、Agent 边界和测试覆盖地图见 `documentation/`；求职讲述边界见 `docs/PORTFOLIO_PLAYBOOK.md`。
+当前数字与版本以 [`CURRENT_STATUS.md`](CURRENT_STATUS.md) 为准。完整的权限、运行流程、变量、Agent 边界和测试覆盖地图见 `documentation/`；求职讲述边界见 `PORTFOLIO_PLAYBOOK.md`。

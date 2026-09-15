@@ -1,5 +1,7 @@
 # CabinGuard 与 CAR-Bench 对比说明
 
+> **历史研究快照。** 本文保留当时的竞品与架构研究，文中工具/评测数量不代表当前版本；当前事实以 [CURRENT_STATUS](CURRENT_STATUS.md) 为准。
+
 > 调研快照：2026-09-12。该文档用于技术选型和面试边界说明；CabinGuard 不依赖、未复制 CAR-Bench 代码。
 
 ## 1. CAR-Bench 是什么

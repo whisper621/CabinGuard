@@ -3,6 +3,7 @@ from __future__ import annotations
 import threading
 import time
 from dataclasses import dataclass, field
+from typing import Any, Literal
 from uuid import uuid4
 
 from .models import Scenario, VehicleState
@@ -13,12 +14,25 @@ CONFIRMATION_TTL_SECONDS = 2 * 60
 RATE_WINDOW_SECONDS = 5 * 60
 RATE_LIMIT = 30
 MAX_SESSIONS = 300
+MAX_OPERATIONS_PER_SESSION = 50
+
+OperationStatus = Literal[
+    "running",
+    "awaiting_confirmation",
+    "success",
+    "blocked",
+    "cancelled",
+    "timed_out",
+    "conflict",
+    "failed",
+]
 
 
 @dataclass
 class PendingSunroofAction:
     target_percent: int
     expires_at: float
+    operation_id: str | None = None
 
 
 @dataclass
@@ -26,6 +40,34 @@ class PendingDoorAction:
     door: str
     action: str
     expires_at: float
+    operation_id: str | None = None
+
+
+@dataclass
+class OperationRecord:
+    """Request-level write boundary used for replay, conflict and recovery evidence."""
+
+    id: str
+    idempotency_key: str
+    expected_state_version: int | None
+    state_version_before: int
+    started_at: float
+    deadline_at: float
+    status: OperationStatus = "running"
+    response: dict[str, Any] | None = None
+    finished_at: float | None = None
+
+    def public_dict(self, *, replayed: bool = False) -> dict[str, object]:
+        return {
+            "id": self.id,
+            "idempotencyKey": self.idempotency_key,
+            "status": self.status,
+            "stateVersionBefore": self.state_version_before,
+            "expectedStateVersion": self.expected_state_version,
+            "replayed": replayed,
+            "startedAt": self.started_at,
+            "finishedAt": self.finished_at,
+        }
 
 
 @dataclass
@@ -42,6 +84,10 @@ class CabinSession:
     occupant_role: OccupantRole = "driver"
     state_version: int = 1
     active_plan_id: str | None = None
+    memory_profile_id: str | None = None
+    memory_consent: bool = False
+    operations: dict[str, OperationRecord] = field(default_factory=dict)
+    active_operation_id: str | None = None
 
 
 @dataclass
@@ -147,6 +193,8 @@ class SessionStore:
         accuracy_meters: float | None = None,
         allow_external_routing: bool = False,
         occupant_role: OccupantRole = "driver",
+        memory_profile_id: str | None = None,
+        memory_consent: bool = False,
     ) -> CabinSession:
         with self._lock:
             now = time.time()
@@ -164,6 +212,8 @@ class SessionStore:
                 created_at=now,
                 expires_at=now + SESSION_TTL_SECONDS,
                 occupant_role=occupant_role,
+                memory_profile_id=memory_profile_id,
+                memory_consent=memory_consent and bool(memory_profile_id),
             )
             self._sessions[session.id] = session
             return session
@@ -214,11 +264,14 @@ class SessionStore:
             self._sessions[session.id] = session
             return removed
 
-    def create_sunroof_confirmation(self, session: CabinSession, target_percent: int) -> None:
+    def create_sunroof_confirmation(
+        self, session: CabinSession, target_percent: int, operation_id: str | None = None
+    ) -> None:
         with self._lock:
             session.pending_action = PendingSunroofAction(
                 target_percent=target_percent,
                 expires_at=time.time() + CONFIRMATION_TTL_SECONDS,
+                operation_id=operation_id,
             )
             self._sessions[session.id] = session
 
@@ -233,12 +286,15 @@ class SessionStore:
                 return None
             return pending
 
-    def create_door_confirmation(self, session: CabinSession, door: str, action: str) -> None:
+    def create_door_confirmation(
+        self, session: CabinSession, door: str, action: str, operation_id: str | None = None
+    ) -> None:
         with self._lock:
             session.pending_action = PendingDoorAction(
                 door=door,
                 action=action,
                 expires_at=time.time() + CONFIRMATION_TTL_SECONDS,
+                operation_id=operation_id,
             )
             self._sessions[session.id] = session
 
@@ -257,6 +313,164 @@ class SessionStore:
         with self._lock:
             session.pending_action = None
             self._sessions[session.id] = session
+
+    def set_memory_consent(self, session: CabinSession, granted: bool) -> None:
+        with self._lock:
+            session.memory_consent = granted and bool(session.memory_profile_id)
+            session.expires_at = time.time() + SESSION_TTL_SECONDS
+            self._sessions[session.id] = session
+
+    def begin_operation(
+        self,
+        session: CabinSession,
+        *,
+        idempotency_key: str,
+        expected_state_version: int | None,
+        timeout_seconds: float,
+    ) -> tuple[OperationRecord, Literal["started", "replayed", "conflict"]]:
+        """Open a request operation without allowing a stale client to overwrite state."""
+
+        with self._lock:
+            existing = session.operations.get(idempotency_key)
+            if existing is not None:
+                session.expires_at = time.time() + SESSION_TTL_SECONDS
+                self._sessions[session.id] = session
+                return existing, "replayed"
+            active = next(
+                (
+                    item
+                    for item in session.operations.values()
+                    if item.id == session.active_operation_id and item.status == "running"
+                ),
+                None,
+            )
+            if active is not None:
+                now = time.time()
+                return (
+                    OperationRecord(
+                        id=str(uuid4()),
+                        idempotency_key=idempotency_key,
+                        expected_state_version=expected_state_version,
+                        state_version_before=session.state_version,
+                        started_at=now,
+                        deadline_at=now,
+                        status="conflict",
+                        finished_at=now,
+                    ),
+                    "conflict",
+                )
+            if expected_state_version is not None and expected_state_version != session.state_version:
+                record = OperationRecord(
+                    id=str(uuid4()),
+                    idempotency_key=idempotency_key,
+                    expected_state_version=expected_state_version,
+                    state_version_before=session.state_version,
+                    started_at=time.time(),
+                    deadline_at=time.time(),
+                    status="conflict",
+                    finished_at=time.time(),
+                )
+                return record, "conflict"
+            now = time.time()
+            record = OperationRecord(
+                id=str(uuid4()),
+                idempotency_key=idempotency_key,
+                expected_state_version=expected_state_version,
+                state_version_before=session.state_version,
+                started_at=now,
+                deadline_at=now + timeout_seconds,
+            )
+            session.operations[idempotency_key] = record
+            session.operations = dict(list(session.operations.items())[-MAX_OPERATIONS_PER_SESSION:])
+            session.active_operation_id = record.id
+            session.expires_at = now + SESSION_TTL_SECONDS
+            self._sessions[session.id] = session
+            return record, "started"
+
+    def complete_operation(
+        self,
+        session: CabinSession,
+        operation: OperationRecord,
+        *,
+        status: OperationStatus,
+        response: dict[str, Any],
+    ) -> None:
+        with self._lock:
+            operation.status = status
+            operation.response = dict(response)
+            operation.finished_at = time.time()
+            session.operations[operation.idempotency_key] = operation
+            if session.active_operation_id == operation.id:
+                session.active_operation_id = None
+            session.expires_at = time.time() + SESSION_TTL_SECONDS
+            self._sessions[session.id] = session
+
+    def mark_operation_awaiting_confirmation(
+        self, session: CabinSession, operation_id: str | None
+    ) -> None:
+        if operation_id is None:
+            return
+        with self._lock:
+            operation = next((item for item in session.operations.values() if item.id == operation_id), None)
+            if operation is None:
+                return
+            operation.status = "awaiting_confirmation"
+            operation.finished_at = time.time()
+            if session.active_operation_id == operation_id:
+                session.active_operation_id = None
+            self._sessions[session.id] = session
+
+    def cancel_active_operation(self, session: CabinSession) -> OperationRecord | None:
+        with self._lock:
+            if session.active_operation_id is None:
+                return None
+            operation = next(
+                (item for item in session.operations.values() if item.id == session.active_operation_id),
+                None,
+            )
+            if operation is None:
+                return None
+            operation.status = "cancelled"
+            operation.finished_at = time.time()
+            session.active_operation_id = None
+            self._sessions[session.id] = session
+            return operation
+
+    def cancel_operation(
+        self, session: CabinSession, *, idempotency_key: str | None = None
+    ) -> OperationRecord | None:
+        """Mark the active or named operation cancelled; the runner checks before each tool."""
+
+        with self._lock:
+            operation = (
+                session.operations.get(idempotency_key)
+                if idempotency_key is not None
+                else next(
+                    (
+                        item
+                        for item in session.operations.values()
+                        if item.id == session.active_operation_id
+                    ),
+                    None,
+                )
+            )
+            if operation is None or operation.status != "running":
+                return None
+            operation.status = "cancelled"
+            operation.finished_at = time.time()
+            if session.active_operation_id == operation.id:
+                session.active_operation_id = None
+            self._sessions[session.id] = session
+            return operation
+
+    def operation_cancelled(self, session: CabinSession, operation_id: str | None) -> bool:
+        if operation_id is None:
+            return False
+        with self._lock:
+            return any(
+                item.id == operation_id and item.status == "cancelled"
+                for item in session.operations.values()
+            )
 
     def consume_rate_limit(self, key: str) -> tuple[bool, int]:
         with self._lock:

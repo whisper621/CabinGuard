@@ -1,5 +1,7 @@
 # CabinGuard：从单 Agent 到混合多 Agent 的演进决策
 
+> **历史方案快照。** 本文用于保留架构取舍过程，旧工具/信号/测试数量不作为当前事实；请以 [CURRENT_STATUS](CURRENT_STATUS.md) 为准。
+
 ## 结论先行
 
 CabinGuard v0.5 继续保持 **一个面向用户的 Orchestrator Agent + 多个确定性领域执行器** 是正确的，不应为了简历把它直接改名为“多 Agent”。

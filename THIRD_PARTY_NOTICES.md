@@ -40,7 +40,7 @@ Python Agent 后端的直接依赖声明在 `pyproject.toml`，包括 FastAPI、
 
 ## 地图与道路数据
 
-Agent Lab 使用 Leaflet（BSD-2-Clause）渲染地图，并在用户触发导航时访问 OpenStreetMap 生态的公共服务：Nominatim 用于地点检索，OSRM 用于道路算路，OpenStreetMap 标准瓦片用于地图展示。页面保留可见的 `© OpenStreetMap contributors` 归属信息。地图数据适用 [OpenStreetMap 版权与许可说明](https://www.openstreetmap.org/copyright)，公共服务还受各自使用政策、容量与可用性限制；本项目不批量抓取或打包离线地图。
+Agent Lab 使用 Leaflet（BSD-2-Clause）渲染地图，并在用户触发导航或补能检索时访问 OpenStreetMap 生态的公共服务：Nominatim 用于地点检索，OSRM 用于道路算路，Overpass 用于充电设施 POI 查询，OpenStreetMap 标准瓦片用于地图展示。页面保留可见的 `© OpenStreetMap contributors` 归属信息。地图数据适用 [OpenStreetMap 版权与许可说明](https://www.openstreetmap.org/copyright)，公共服务还受各自使用政策、容量与可用性限制；本项目不批量抓取或打包离线地图，不将 POI 解释为实时枪位、价格或营业状态。
 
 ## 产品内容边界
 

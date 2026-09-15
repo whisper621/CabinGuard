@@ -37,6 +37,50 @@ def test_creates_rain_session_with_frontend_shape() -> None:
     assert payload["vehicle"]["locationSource"] == "simulated"
 
 
+def test_session_exposes_human_approved_proactive_suggestions() -> None:
+    response = client.post("/api/cabin/session", json={"scenario": "low_battery"})
+    assert response.status_code == 200
+    suggestions = response.json()["proactiveSuggestions"]
+    assert suggestions[0]["id"] == "low_battery_charge"
+    assert suggestions[0]["requiresHumanConfirmation"] is True
+
+
+def test_memory_consent_can_be_granted_and_revoked() -> None:
+    created = client.post(
+        "/api/cabin/session",
+        json={"scenario": "default", "memoryProfileId": "test-browser-profile-0001"},
+    ).json()
+    granted = client.post(
+        "/api/cabin/memory/consent",
+        json={"sessionId": created["sessionId"], "granted": True, "ttlDays": 30},
+    )
+    assert granted.status_code == 200
+    assert granted.json()["memory"]["consentGranted"] is True
+    revoked = client.post(
+        "/api/cabin/memory/consent",
+        json={"sessionId": created["sessionId"], "granted": False},
+    )
+    assert revoked.status_code == 200
+    assert revoked.json()["memory"]["consentGranted"] is False
+
+
+def test_running_operation_has_a_cancel_endpoint() -> None:
+    session = store.create_session()
+    operation, decision = store.begin_operation(
+        session,
+        idempotency_key="api-cancel-key-0001",
+        expected_state_version=session.state_version,
+        timeout_seconds=45,
+    )
+    assert decision == "started"
+    response = client.post(
+        "/api/cabin/operations/cancel",
+        json={"sessionId": session.id, "idempotencyKey": operation.idempotency_key},
+    )
+    assert response.status_code == 200
+    assert response.json()["operation"]["status"] == "cancelled"
+
+
 def test_creates_session_with_browser_location() -> None:
     response = client.post(
         "/api/cabin/session",
@@ -94,16 +138,16 @@ def test_previews_task_plan_without_model_call() -> None:
     response = client.post("/api/cabin/plan", json={"text": "空调调到22度并导航去故宫"})
     assert response.status_code == 200
     payload = response.json()
-    assert payload["version"] == "7.0.0"
+    assert payload["version"] == "8.0.0"
     assert "set_climate" in payload["allowedTools"]
     assert "plan_navigation" in payload["allowedTools"]
 
 
-def test_v7_scenario_matrix_endpoint_reports_200_passes() -> None:
+def test_v8_scenario_matrix_endpoint_reports_200_passes() -> None:
     response = client.get("/api/evaluation/scenario-matrix-summary")
     assert response.status_code == 200
     payload = response.json()
-    assert payload["version"] == "7.0.0"
+    assert payload["version"] == "8.0.0"
     assert payload["caseCount"] == payload["passed"] == 200
     assert payload["passRate"] == 1.0
     assert set(payload["scenarioCounts"]) == {
@@ -210,8 +254,8 @@ def test_lists_versioned_reliability_cases() -> None:
     response = client.get("/api/evaluation/cases")
     assert response.status_code == 200
     payload = response.json()
-    assert payload["version"] == "3.1.0"
-    assert len(payload["cases"]) == 15
+    assert payload["version"] == "4.0.0"
+    assert len(payload["cases"]) == 50
 
 
 def test_scores_a_trajectory_with_python_evaluator() -> None:

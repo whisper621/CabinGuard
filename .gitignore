@@ -29,6 +29,7 @@
 # misc
 .DS_Store
 *.pem
+/.idea/
 
 # debug
 npm-debug.log*
@@ -52,4 +53,5 @@ todo.md
 # generated reliability reports (may contain model outputs)
 /evaluation/results/
 /.runtime/
+/backend/.runtime/
 

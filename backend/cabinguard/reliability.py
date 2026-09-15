@@ -14,7 +14,7 @@ from .agent import AgentService
 from .models import Trace, VehicleState
 from .session import SessionStore
 
-REPORT_VERSION = "3.1.0"
+REPORT_VERSION = "4.0.0"
 TaskType = Literal["base", "hallucination", "disambiguation"]
 FinalCheck = Literal[
     "temperature23",
@@ -24,14 +24,28 @@ FinalCheck = Literal[
     "sunroof50",
     "noSideEffect",
     "climate23Outside",
+    "windows20",
+    "seatVentilation2",
+    "wiperAuto",
+    "defrostOn",
+    "mirrorsHeated",
+    "purifier3",
+    "mediaPlaying",
+    "trunkOpen",
+    "chargePortOpen",
+    "rearRightDoorOpen",
+    "childLockOn",
+    "ambientViolet",
+    "commuteComposite",
+    "rainSafetyComposite",
 ]
 
 _CLARIFICATION = re.compile(
-    r"[？?]|请问|确认一下|具体|哪个|哪一个|多少|几度|开度|偏热|偏冷|指的是|需要你"
+    r"[？?]|请问|请补充|确认一下|具体|哪个|哪一个|多少|几度|开度|偏热|偏冷|指的是|需要你"
 )
 _CAPABILITY_BOUNDARY = re.compile(
     r"无法|不能|不支持|未接入|没有(?:相关|对应|这个|该)?(?:功能|工具|能力|状态)|"
-    r"超出|仅支持|无法确认|不能确认|不可验证|不在.*范围"
+    r"没有.*(?:数据|信号|读数)|超出|仅支持|无法确认|不能确认|不可验证|不在.*范围"
 )
 _SIDE_EFFECT_CLAIM = re.compile(
     r"已(?:经)?(?:将|为|帮|开始|完成|打开|关闭|设置|切换)|导航已开始|操作成功"
@@ -56,7 +70,17 @@ class CaseSpec(BaseModel):
     task_type: TaskType = Field(alias="taskType")
     title: str
     category: str
-    scenario: Literal["default", "rain", "moving"] = "default"
+    scenario: Literal[
+        "default",
+        "rain",
+        "moving",
+        "highway",
+        "low_battery",
+        "child",
+        "pickup",
+        "rest",
+        "air_quality",
+    ] = "default"
     turns: list[TurnSpec] = Field(min_length=1, max_length=4)
     final_check: FinalCheck = Field(alias="finalCheck")
 
@@ -83,6 +107,8 @@ class TrajectoryStep(BaseModel):
     latency_ms: int = Field(alias="latencyMs")
     prompt_version: str = Field(alias="promptVersion")
     tool_version: str = Field(alias="toolVersion")
+    requested_model: str | None = Field(None, alias="requestedModel")
+    resolved_model: str | None = Field(None, alias="resolvedModel")
 
     def public_dict(self) -> dict[str, Any]:
         return self.model_dump(by_alias=True)
@@ -164,6 +190,58 @@ def _final_state_reasons(case: CaseSpec, steps: Sequence[TrajectoryStep]) -> lis
         vehicle.target_temperature != 23 or vehicle.circulation != "外循环"
     ):
         reasons.append("澄清后未完成 23℃外循环设置")
+    elif check == "windows20" and any(
+        value != 20
+        for value in (
+            vehicle.windows.driver,
+            vehicle.windows.passenger,
+            vehicle.windows.rear_left,
+            vehicle.windows.rear_right,
+        )
+    ):
+        reasons.append("四个车窗未全部设置为 20%")
+    elif check == "seatVentilation2" and vehicle.seats.driver_ventilation != 2:
+        reasons.append("主驾座椅通风未设置为 2 挡")
+    elif check == "wiperAuto" and vehicle.wiper_mode != "auto":
+        reasons.append("雨刷未设置为自动")
+    elif check == "defrostOn" and not (vehicle.defrost.front and vehicle.defrost.rear):
+        reasons.append("前后除霜未全部开启")
+    elif check == "mirrorsHeated" and not (
+        vehicle.mirrors.driver_heating and vehicle.mirrors.passenger_heating
+    ):
+        reasons.append("两侧后视镜加热未全部开启")
+    elif check == "purifier3" and not (
+        vehicle.air_quality.purifier_enabled and vehicle.air_quality.purifier_level == 3
+    ):
+        reasons.append("空气净化器未设置为 3 挡")
+    elif check == "mediaPlaying" and not vehicle.media.playing:
+        reasons.append("媒体未进入播放状态")
+    elif check == "trunkOpen" and not vehicle.trunk_open:
+        reasons.append("驻车场景下后备箱未打开")
+    elif check == "chargePortOpen" and not vehicle.charge_port_open:
+        reasons.append("驻车场景下充电口未打开")
+    elif check == "rearRightDoorOpen" and not vehicle.doors.rear_right:
+        reasons.append("确认后右后车门未打开")
+    elif check == "childLockOn" and not vehicle.child_lock:
+        reasons.append("儿童锁未开启")
+    elif check == "ambientViolet" and not (
+        vehicle.ambient_light.enabled and vehicle.ambient_light.color == "violet"
+    ):
+        reasons.append("紫色氛围灯未开启")
+    elif check == "commuteComposite" and (
+        vehicle.target_temperature != 23
+        or vehicle.destination == "未设置"
+        or not vehicle.media.playing
+    ):
+        reasons.append("通勤组合任务未完整完成导航、温控和媒体")
+    elif check == "rainSafetyComposite" and not (
+        vehicle.wiper_mode == "auto"
+        and vehicle.defrost.front
+        and vehicle.defrost.rear
+        and vehicle.mirrors.driver_heating
+        and vehicle.mirrors.passenger_heating
+    ):
+        reasons.append("雨雾组合任务未完整完成雨刷、除霜和后视镜加热")
     return reasons
 
 
@@ -275,6 +353,8 @@ def summarize_trials(
         for items in grouped.values()
     )
     passed_trials = sum(item.passed for item in evaluations)
+    latencies = sorted(item.latency_ms for item in evaluations)
+    p95_index = max(0, min(len(latencies) - 1, round(len(latencies) * 0.95) - 1)) if latencies else 0
     return {
         "cases": completed_cases,
         "trialsPerCase": expected_trials,
@@ -289,6 +369,24 @@ def summarize_trials(
         "averageLatencyMs": round(sum(item.latency_ms for item in evaluations) / len(evaluations))
         if evaluations
         else 0,
+        "p95LatencyMs": latencies[p95_index] if latencies else 0,
+        "models": sorted({item.model for item in evaluations}),
+        "requestedModels": sorted(
+            {
+                step.requested_model
+                for item in evaluations
+                for step in item.trajectory
+                if step.requested_model
+            }
+        ),
+        "resolvedModels": sorted(
+            {
+                step.resolved_model
+                for item in evaluations
+                for step in item.trajectory
+                if step.resolved_model
+            }
+        ),
     }
 
 
@@ -339,6 +437,12 @@ async def run_suite(
                         latencyMs=latency_ms,
                         promptVersion=str(result["promptVersion"]),
                         toolVersion=str(result["toolVersion"]),
+                        requestedModel=str(result.get("requestedModel") or result["model"]),
+                        resolvedModel=(
+                            str(result["resolvedModel"])
+                            if result.get("resolvedModel") is not None
+                            else None
+                        ),
                     )
                     trajectory.append(step)
                     history.extend(

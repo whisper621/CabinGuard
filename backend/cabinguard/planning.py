@@ -39,7 +39,7 @@ class TaskPlan(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     id: str
-    version: str = "7.0.0"
+    version: str = "8.0.0"
     objective: str
     nodes: list[TaskNode]
     execution_waves: list[list[str]] = Field(alias="executionWaves")

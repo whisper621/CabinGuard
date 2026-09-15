@@ -122,7 +122,7 @@ def start_showcase(*, open_browser: bool) -> None:
     python_path = python_executable()
     npm_path = shutil.which("npm.cmd" if os.name == "nt" else "npm")
     if npm_path is None:
-        raise RuntimeError("未找到 npm，请先安装 Node.js 20+")
+        raise RuntimeError("未找到 npm，请先安装 Node.js 24+")
     if not (PROJECT_ROOT / "node_modules").exists():
         raise RuntimeError("未找到 node_modules，请先在项目根目录执行：npm install")
 
@@ -228,6 +228,10 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8")
     args = parse_args()
     if args.stop:
         stop_saved_processes()

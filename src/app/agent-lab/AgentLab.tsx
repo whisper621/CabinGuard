@@ -32,12 +32,12 @@ type VehicleState = {
   mirrors: { driverFolded: boolean; passengerFolded: boolean; driverHeating: boolean; passengerHeating: boolean };
   wiperMode: "off" | "auto" | "slow" | "medium" | "high";
   airQuality: { pm25: number; purifierEnabled: boolean; purifierLevel: number; fragrance: "off" | "forest" | "ocean" | "citrus" };
-  childLock: boolean; trunkOpen: boolean; chargePortOpen: boolean;
+  childLock: boolean; trunkOpen: boolean; chargePortOpen: boolean; perceptionEvent?: string | null;
   media: { source: "none" | "music" | "radio" | "podcast"; playing: boolean; volume: number; currentIndex: number; current: MediaTrack | null; queue: MediaTrack[] };
 };
 type CabinScenario = "default" | "rain" | "moving" | "highway" | "low_battery" | "child" | "pickup" | "rest" | "air_quality";
 type BrowserLocation = { latitude: number; longitude: number; accuracyMeters?: number; allowExternalRouting?: boolean };
-type Panel = "assistant" | "plan" | "trace" | "policy" | "history";
+type Panel = "assistant" | "plan" | "memory" | "history";
 type MapDrawer = "scenes" | "vehicle" | "route" | null;
 type SpeechRecognitionLike = {
   lang: string; continuous: boolean; interimResults: boolean; maxAlternatives: number;
@@ -52,11 +52,15 @@ type AgentResponse = {
   message: string; sessionId: string; vehicle: VehicleState; traces: Trace[]; model: string;
   turns: number; totalTokens: number; promptVersion: string; toolVersion: string; plan?: TaskPlan;
   occupantRole: OccupantRole; stateVersion: number; error?: { message?: string };
+  proactiveSuggestions?: ProactiveSuggestion[]; memory?: MemoryStatus;
 };
 type SessionResponse = {
   sessionId?: string; scenario?: CabinScenario; vehicle?: VehicleState; stateVersion?: number;
-  occupantRole?: OccupantRole; error?: { message?: string };
+  occupantRole?: OccupantRole; error?: { message?: string }; proactiveSuggestions?: ProactiveSuggestion[];
+  memory?: MemoryStatus;
 };
+type ProactiveSuggestion = { id: string; title: string; message: string; prompt: string; source: string; requiresHumanConfirmation: boolean };
+type MemoryStatus = { profileId?: string; consentGranted: boolean; scope: string; retention: string; preferences: Record<string, string> };
 
 const initialVehicle: VehicleState = {
   speed: 82, gear: "D", battery: 38, range: 176, cabinTemperature: 26.5, targetTemperature: 24,
@@ -88,19 +92,18 @@ const scenarioOptions: Array<{ value: CabinScenario; label: string; hint: string
   { value: "rest", label: "停车休息", hint: "舒适座舱", description: "座椅、温度、香氛和音乐联动", prompt: "开启主驾座椅通风2挡，空调调到22度，打开森林香氛并播放轻音乐" },
   { value: "air_quality", label: "空气守护", hint: "PM2.5 168", description: "空气异常感知与净化执行", prompt: "车里空气不好，打开3挡净化器并切换森林香氛" },
 ];
-const policies = [
-  ["目的地可信", "普通导航只能使用本会话实时检索返回的候选 ID。"],
-  ["坐标隔离", "精确起点用于道路算路，不写入大模型工具回执。"],
-  ["显式授权", "定位由浏览器询问；外部算路需用户点击授权入口。"],
-  ["先读后写", "车控动作执行前必须读取对应车辆状态。"],
-  ["驾驶安全", "行驶中禁开后备箱；高速开天窗要求二次确认。"],
-  ["天气联锁", "高降雨概率时拒绝打开天窗。"],
-  ["真实声明", "地图或算路服务失败时阻断，不生成虚假路线。"],
-  ["最小披露", "模型只接收完成任务所需的最少上下文。"],
-];
 const now = () => new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(new Date());
 const CONVERSATION_STORAGE_KEY = "cabinguard-conversations-v1";
+const MEMORY_PROFILE_STORAGE_KEY = "cabinguard-memory-profile-v1";
 const welcomeMessages: Message[] = [{ role: "assistant", content: "驾驶智能体已就绪。你可以导航到任意可检索地点、组合执行座舱任务，或测试安全拦截。", time: "已就绪" }];
+
+function getMemoryProfileId(): string {
+  const existing = window.localStorage.getItem(MEMORY_PROFILE_STORAGE_KEY);
+  if (existing) return existing;
+  const profileId = window.crypto?.randomUUID?.() ?? `profile-${Date.now()}`;
+  window.localStorage.setItem(MEMORY_PROFILE_STORAGE_KEY, profileId);
+  return profileId;
+}
 
 function mergeVehicle(vehicle: VehicleState): VehicleState {
   return { ...initialVehicle, ...vehicle, windows: { ...initialVehicle.windows, ...vehicle.windows }, seats: { ...initialVehicle.seats, ...vehicle.seats }, ambientLight: { ...initialVehicle.ambientLight, ...vehicle.ambientLight }, defrost: { ...initialVehicle.defrost, ...vehicle.defrost }, doors: { ...initialVehicle.doors, ...vehicle.doors }, mirrors: { ...initialVehicle.mirrors, ...vehicle.mirrors }, airQuality: { ...initialVehicle.airQuality, ...vehicle.airQuality }, media: { ...initialVehicle.media, ...vehicle.media, queue: vehicle.media?.queue ?? [] } };
@@ -124,16 +127,9 @@ function DrawerShell({ title, subtitle, onClose, children }: { title: string; su
   return <section className="absolute inset-y-4 right-4 z-[700] flex w-[min(430px,calc(100%-32px))] flex-col overflow-hidden rounded-3xl border border-white/10 bg-[#09111f]/95 shadow-2xl shadow-black/60 backdrop-blur-2xl"><header className="flex items-start justify-between gap-4 border-b border-white/10 p-5"><div><h3 className="font-semibold text-white">{title}</h3><p className="mt-1 text-xs text-slate-500">{subtitle}</p></div><button type="button" aria-label="关闭抽屉" onClick={onClose} className="grid h-8 w-8 place-items-center rounded-full bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white">×</button></header><div className="flex-1 overflow-y-auto p-4">{children}</div></section>;
 }
 
-function TraceCard({ trace, index }: { trace: Trace; index: number }) {
-  return <details className={`group rounded-xl border ${trace.status === "blocked" ? "border-rose-400/25 bg-rose-500/10" : "border-emerald-400/20 bg-emerald-500/[0.07]"}`}>
-    <summary className="flex cursor-pointer list-none items-center gap-3 px-3 py-3 text-sm"><span className="flex h-6 w-6 items-center justify-center rounded-lg bg-white/10 text-xs text-slate-300">{index + 1}</span><span className={`h-2 w-2 rounded-full ${trace.status === "blocked" ? "bg-rose-400" : "bg-emerald-400"}`} /><span className="min-w-0 flex-1 truncate font-medium text-slate-100">{trace.name}</span><span className="text-xs text-slate-500 group-open:rotate-180">⌄</span></summary>
-    <div className="space-y-3 border-t border-white/10 p-3 text-xs"><div className="flex flex-wrap gap-2 text-[11px] text-slate-500"><span>{domainLabels[trace.domain || "system"]}</span><span>策略 {trace.policyCode || "—"}</span><span>状态 v{trace.stateVersionBefore ?? "—"} → v{trace.stateVersionAfter ?? "—"}</span></div><div><p className="mb-1 font-medium text-slate-400">工具输入</p><pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded-lg bg-slate-950/80 p-2 text-slate-300">{JSON.stringify(trace.input, null, 2)}</pre></div><div><p className="mb-1 font-medium text-slate-400">策略输出</p><pre className="max-h-52 overflow-auto whitespace-pre-wrap rounded-lg bg-slate-950/80 p-2 text-slate-300">{JSON.stringify(trace.output, null, 2)}</pre></div></div>
-  </details>;
-}
-
-function TaskPlanPanel({ plan, traces, stateVersion }: { plan: TaskPlan | null; traces: Trace[]; stateVersion: number }) {
-  if (!plan) return <div className="rounded-2xl border border-dashed border-white/10 p-8 text-center text-sm leading-6 text-slate-500">下达任务后，这里会显示目标、依赖关系、风险等级、工具白名单和执行结果。</div>;
-  return <div className="space-y-3"><div className="rounded-2xl border border-cyan-400/20 bg-cyan-400/[0.06] p-4"><p className="text-xs tracking-[0.14em] text-cyan-300">当前任务计划</p><p className="mt-2 text-sm font-medium leading-6 text-white">{plan.objective}</p><div className="mt-3 flex flex-wrap gap-2 text-[11px] text-slate-400"><span>{plan.nodes.length} 个任务</span><span>{plan.executionWaves.length} 个执行波次</span><span>状态 v{stateVersion}</span>{plan.requiresConfirmation && <span className="text-amber-300">包含需确认动作</span>}</div></div>{plan.nodes.map((node, index) => { const receipts = traces.filter((trace) => trace.taskId === node.id); const blocked = receipts.some((trace) => trace.status === "blocked"); const success = receipts.some((trace) => trace.status === "success"); return <article key={node.id} className={`rounded-2xl border p-3 ${blocked ? "border-rose-400/25 bg-rose-400/[0.06]" : success ? "border-emerald-400/20 bg-emerald-400/[0.05]" : "border-white/[0.07] bg-white/[0.03]"}`}><div className="flex items-start gap-3"><span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-white/[0.07] text-xs text-cyan-200">{index + 1}</span><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center justify-between gap-2"><p className="text-xs text-cyan-300">{domainLabels[node.domain] || node.domain}</p><span className={`rounded-full px-2 py-1 text-[10px] ${node.risk === "high" ? "bg-rose-400/10 text-rose-300" : node.risk === "medium" ? "bg-amber-400/10 text-amber-300" : "bg-emerald-400/10 text-emerald-300"}`}>{zhCN.risks[node.risk]}</span></div><h3 className="mt-1 text-sm font-medium text-white">{node.title}</h3><p className="mt-1 text-xs leading-5 text-slate-500">依赖：{node.dependencies.length ? node.dependencies.join("、") : "无"} · {success ? "已完成" : blocked ? "已阻止" : "待执行"}</p></div></div></article>; })}</div>;
+function TaskPlanPanel({ plan, traces }: { plan: TaskPlan | null; traces: Trace[] }) {
+  if (!plan) return <div className="rounded-2xl border border-dashed border-white/10 p-8 text-center text-sm leading-6 text-slate-500">下达任务后，这里会显示待执行事项、风险提示与结果回执。</div>;
+  return <div className="space-y-3"><div className="rounded-2xl border border-cyan-400/20 bg-cyan-400/[0.06] p-4"><p className="text-xs tracking-[0.14em] text-cyan-300">当前任务</p><p className="mt-2 text-sm font-medium leading-6 text-white">{plan.objective}</p><div className="mt-3 flex flex-wrap gap-2 text-[11px] text-slate-400"><span>{plan.nodes.length} 项待办</span>{plan.requiresConfirmation && <span className="text-amber-300">包含需确认动作</span>}</div></div>{plan.nodes.map((node, index) => { const receipts = traces.filter((trace) => trace.taskId === node.id); const blocked = receipts.some((trace) => trace.status === "blocked"); const success = receipts.some((trace) => trace.status === "success"); return <article key={node.id} className={`rounded-2xl border p-3 ${blocked ? "border-rose-400/25 bg-rose-400/[0.06]" : success ? "border-emerald-400/20 bg-emerald-400/[0.05]" : "border-white/[0.07] bg-white/[0.03]"}`}><div className="flex items-start gap-3"><span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-white/[0.07] text-xs text-cyan-200">{index + 1}</span><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center justify-between gap-2"><p className="text-xs text-cyan-300">{domainLabels[node.domain] || node.domain}</p><span className={`rounded-full px-2 py-1 text-[10px] ${node.risk === "high" ? "bg-rose-400/10 text-rose-300" : node.risk === "medium" ? "bg-amber-400/10 text-amber-300" : "bg-emerald-400/10 text-emerald-300"}`}>{zhCN.risks[node.risk]}</span></div><h3 className="mt-1 text-sm font-medium text-white">{node.title}</h3><p className="mt-1 text-xs leading-5 text-slate-500">{success ? "已完成" : blocked ? "未执行（已保护）" : "等待执行"}</p></div></div></article>; })}</div>;
 }
 
 export default function AgentLab() {
@@ -147,6 +143,7 @@ export default function AgentLab() {
   const [stateVersion, setStateVersion] = useState(1);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  const [activeOperationKey, setActiveOperationKey] = useState<string | null>(null);
   const [panel, setPanel] = useState<Panel>("assistant");
   const [mapDrawer, setMapDrawer] = useState<MapDrawer>(null);
   const [browserLocation, setBrowserLocation] = useState<BrowserLocation | null>(null);
@@ -158,13 +155,15 @@ export default function AgentLab() {
   const [voiceNotice, setVoiceNotice] = useState("点击麦克风后，说出中文任务");
   const [conversations, setConversations] = useState<ConversationRecord[]>([]);
   const [archiveReady, setArchiveReady] = useState(false);
+  const [suggestions, setSuggestions] = useState<ProactiveSuggestion[]>([]);
+  const [memory, setMemory] = useState<MemoryStatus>({ consentGranted: false, scope: "session", retention: "仅本会话", preferences: {} });
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const voicePrefixRef = useRef("");
   const latestInputRef = useRef("");
   const keepListeningRef = useRef(false);
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const [meta, setMeta] = useState({ model: "等待调用", turns: 0, tokens: 0, latency: 0, promptVersion: "—", toolVersion: "—" });
+  const [, setMeta] = useState({ model: "等待调用", turns: 0, tokens: 0, latency: 0, promptVersion: "—", toolVersion: "—" });
   const hasLiveRoute = vehicle.routeProvider.includes("OSRM") && vehicle.routePolyline.length >= 2;
   const routeFreshness = useMemo(() => {
     if (!vehicle.routeDataFreshness || vehicle.routeDataFreshness === "—") return "尚未算路";
@@ -173,12 +172,13 @@ export default function AgentLab() {
   }, [vehicle.routeDataFreshness]);
 
   const createSession = async (nextScenario: CabinScenario, location?: BrowserLocation, nextRole: OccupantRole = role) => {
-    const response = await fetch(cabinApiUrl("/api/cabin/session"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ scenario: nextScenario, occupantRole: nextRole, ...(location ? { location } : {}) }) });
+    const response = await fetch(cabinApiUrl("/api/cabin/session"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ scenario: nextScenario, occupantRole: nextRole, memoryProfileId: getMemoryProfileId(), memoryConsent: memory.consentGranted, ...(location ? { location } : {}) }) });
     const data = await response.json() as SessionResponse;
     if (!response.ok || !data.sessionId || !data.vehicle) throw new Error(data.error?.message || "无法创建演示会话");
     setSessionId(data.sessionId); setScenario(data.scenario ?? nextScenario); setRole(data.occupantRole ?? nextRole); setStateVersion(data.stateVersion ?? 1);
     window.localStorage.setItem("cabinguard-session-id", data.sessionId); window.localStorage.setItem("cabinguard-occupant-role", data.occupantRole ?? nextRole);
     setVehicle(mergeVehicle(data.vehicle));
+    setSuggestions(data.proactiveSuggestions ?? []); setMemory(data.memory ?? { consentGranted: false, scope: "session", retention: "仅本会话", preferences: {} });
     return data.sessionId;
   };
 
@@ -193,7 +193,7 @@ export default function AgentLab() {
         const response = await fetch(cabinApiUrl(`/api/cabin/session/${storedSessionId}`));
         const data = await response.json() as SessionResponse;
         if (response.ok && data.sessionId && data.vehicle) {
-          setSessionId(data.sessionId); setScenario(data.scenario ?? "default"); setRole(data.occupantRole ?? "driver"); setStateVersion(data.stateVersion ?? 1); setVehicle(mergeVehicle(data.vehicle));
+          setSessionId(data.sessionId); setScenario(data.scenario ?? "default"); setRole(data.occupantRole ?? "driver"); setStateVersion(data.stateVersion ?? 1); setVehicle(mergeVehicle(data.vehicle)); setSuggestions(data.proactiveSuggestions ?? []); setMemory(data.memory ?? { consentGranted: false, scope: "session", retention: "仅本会话", preferences: {} });
           const archived = storedConversations.find((record) => record.sessionId === data.sessionId);
           if (archived?.messages.length) setMessages(archived.messages);
           return;
@@ -264,15 +264,36 @@ export default function AgentLab() {
   const submit = async (rawText: string) => {
     const text = rawText.trim(); if (!text || busy || !sessionId) return;
     const history = messages.slice(-8).map(({ role, content }) => ({ role, content })); setMessages((current) => [...current, { role: "user", content: text, time: now() }]); setInput(""); setBusy(true); setPanel("assistant"); const started = performance.now();
+    const idempotencyKey = window.crypto?.randomUUID?.() ?? `operation-${Date.now()}`;
+    setActiveOperationKey(idempotencyKey);
     try {
       let response: Response | null = null;
-      for (let attempt = 1; attempt <= 2; attempt += 1) { response = await fetch(cabinApiUrl("/api/deepseek/agent"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, sessionId, history }) }); if (response.ok || response.status !== 502 || attempt === 2) break; }
+      for (let attempt = 1; attempt <= 2; attempt += 1) { response = await fetch(cabinApiUrl("/api/deepseek/agent"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, sessionId, history, idempotencyKey, expectedStateVersion: stateVersion, timeoutSeconds: 45 }) }); if (response.ok || response.status !== 502 || attempt === 2) break; }
       if (!response) throw new Error("Agent 请求未发出"); const data = (await response.json()) as AgentResponse; if (!response.ok) throw new Error(data.error?.message || "Agent 请求失败");
-      setVehicle(data.vehicle); setSessionId(data.sessionId); setRole(data.occupantRole ?? role); setStateVersion(data.stateVersion ?? stateVersion); setTaskPlan(data.plan ?? null); setTraces((current) => [...[...data.traces].reverse(), ...current]); setMessages((current) => [...current, { role: "assistant", content: data.message, time: now() }]); window.localStorage.setItem("cabinguard-session-id", data.sessionId); speak(data.message);
+      setVehicle(data.vehicle); setSessionId(data.sessionId); setRole(data.occupantRole ?? role); setStateVersion(data.stateVersion ?? stateVersion); setTaskPlan(data.plan ?? null); setTraces((current) => [...[...data.traces].reverse(), ...current]); setSuggestions(data.proactiveSuggestions ?? []); setMemory(data.memory ?? memory); setMessages((current) => [...current, { role: "assistant", content: data.message, time: now() }]); window.localStorage.setItem("cabinguard-session-id", data.sessionId); speak(data.message);
       setMeta({ model: data.model, turns: data.turns, tokens: data.totalTokens, latency: Math.round(performance.now() - started), promptVersion: data.promptVersion, toolVersion: data.toolVersion });
-    } catch (error) { const message = error instanceof Error ? error.message : "未知错误"; setMessages((current) => [...current, { role: "assistant", content: `本次执行失败：${message}`, time: now() }]); } finally { setBusy(false); }
+    } catch (error) { const message = error instanceof Error ? error.message : "未知错误"; setMessages((current) => [...current, { role: "assistant", content: `本次执行失败：${message}`, time: now() }]); } finally { setActiveOperationKey(null); setBusy(false); }
   };
   const onSubmit = (event: FormEvent) => { event.preventDefault(); void submit(input); };
+  const cancelActiveTask = async () => {
+    if (!activeOperationKey || !sessionId) return;
+    try {
+      const response = await fetch(cabinApiUrl("/api/cabin/operations/cancel"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId, idempotencyKey: activeOperationKey }) });
+      if (!response.ok) throw new Error("任务可能已经结束");
+      setMessages((current) => [...current, { role: "assistant", content: "已发出取消请求；智能体将在当前工具边界停止。", time: now() }]);
+    } catch (error) { const message = error instanceof Error ? error.message : "取消失败"; setMessages((current) => [...current, { role: "assistant", content: message, time: now() }]); }
+  };
+  const updateMemoryConsent = async () => {
+    if (!sessionId || busy) return;
+    setBusy(true);
+    try {
+      const response = await fetch(cabinApiUrl("/api/cabin/memory/consent"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId, granted: !memory.consentGranted, ttlDays: 90 }) });
+      const data = await response.json() as { memory?: MemoryStatus; error?: { message?: string } };
+      if (!response.ok || !data.memory) throw new Error(data.error?.message || "记忆授权更新失败");
+      setMemory(data.memory);
+      setMessages((current) => [...current, { role: "assistant", content: data.memory?.consentGranted ? "已授权本地长期偏好（90 天）。你可以说“记住我喜欢 22 度”。随时可在记忆页撤回并删除。" : "已撤回授权并删除本地长期偏好；当前会话仍可临时理解你的指令。", time: now() }]);
+    } catch (error) { const message = error instanceof Error ? error.message : "记忆授权更新失败"; setMessages((current) => [...current, { role: "assistant", content: message, time: now() }]); } finally { setBusy(false); }
+  };
   const startNewConversation = async () => {
     try { await createSession(scenario, browserLocation ?? undefined, role); setMessages([{ role: "assistant", content: "已新建对话。上一段对话保留在“历史”中，可以继续测试多步规划、补参澄清与安全拦截。", time: now() }]); setTraces([]); setTaskPlan(null); setPanel("assistant"); setMeta({ model: "等待调用", turns: 0, tokens: 0, latency: 0, promptVersion: "—", toolVersion: "—" }); }
     catch (error) { const message = error instanceof Error ? error.message : "无法创建会话"; setMessages((current) => [...current, { role: "assistant", content: `新建对话失败：${message}`, time: now() }]); }
@@ -320,7 +341,9 @@ export default function AgentLab() {
             {vehicle.navigationUrl && <a href={vehicle.navigationUrl} target="_blank" rel="noreferrer" className="mt-3 block rounded-xl bg-white/10 px-3 py-2 text-center text-xs font-medium text-cyan-300 hover:bg-white/15">在 OpenStreetMap 核对 ↗</a>}
           </section>
 
-          <div className="absolute right-4 top-4 z-[500] hidden max-w-[280px] rounded-2xl border border-white/10 bg-slate-950/[0.82] p-3 backdrop-blur-xl md:block"><p className="text-[10px] tracking-[0.14em] text-slate-500">CONTEXT AWARENESS</p><div className="mt-2 flex flex-wrap gap-1.5 text-[10px]"><span className="rounded-full bg-white/[0.07] px-2 py-1">雨刷 {vehicle.wiperMode}</span><span className="rounded-full bg-white/[0.07] px-2 py-1">车门 {Object.values(vehicle.doors).filter(Boolean).length ? "有开启" : "全关"}</span><span className="rounded-full bg-white/[0.07] px-2 py-1">香氛 {vehicle.airQuality.fragrance}</span><span className="rounded-full bg-white/[0.07] px-2 py-1">状态 v{stateVersion}</span><span className="rounded-full bg-cyan-400/10 px-2 py-1 text-cyan-300">{meta.model}{meta.latency ? ` · ${meta.latency}ms` : ""}</span></div></div>
+          <div className="absolute right-4 top-4 z-[500] hidden max-w-[280px] rounded-2xl border border-white/10 bg-slate-950/[0.82] p-3 backdrop-blur-xl md:block"><p className="text-[10px] tracking-[0.14em] text-slate-500">行车环境</p><div className="mt-2 flex flex-wrap gap-1.5 text-[10px]"><span className="rounded-full bg-white/[0.07] px-2 py-1">雨刷 {vehicle.wiperMode}</span><span className="rounded-full bg-white/[0.07] px-2 py-1">车门 {Object.values(vehicle.doors).filter(Boolean).length ? "有开启" : "全关"}</span><span className="rounded-full bg-white/[0.07] px-2 py-1">香氛 {vehicle.airQuality.fragrance}</span>{vehicle.perceptionEvent && <span className="rounded-full bg-amber-400/10 px-2 py-1 text-amber-200">请留意前方视野</span>}<a href="/validation?tab=trace" className="rounded-full bg-cyan-400/10 px-2 py-1 text-cyan-300 hover:bg-cyan-400/15">查看验证 ↗</a></div></div>
+
+          {suggestions.length > 0 && <section className="absolute right-4 top-28 z-[500] hidden w-[min(320px,calc(100%-32px))] space-y-2 md:block">{suggestions.slice(0, 2).map((suggestion) => <button type="button" key={suggestion.id} disabled={busy} onClick={() => void submit(suggestion.prompt)} className="w-full rounded-2xl border border-amber-300/20 bg-[#171720]/90 p-3 text-left shadow-xl backdrop-blur-xl transition hover:border-amber-300/40 disabled:opacity-50"><p className="text-xs font-semibold text-amber-200">{suggestion.title}</p><p className="mt-1 text-xs leading-5 text-slate-300">{suggestion.message}</p><p className="mt-2 text-[10px] text-amber-300/80">点击后仅创建任务，受保护动作仍需确认</p></button>)}</section>}
 
           {vehicle.media.current && <section className="absolute bottom-24 left-4 z-[500] flex w-[min(350px,calc(100%-32px))] items-center gap-3 rounded-2xl border border-white/10 bg-slate-950/[0.88] p-3 shadow-xl backdrop-blur-xl">{vehicle.media.current.artworkUrl ? <Image unoptimized src={vehicle.media.current.artworkUrl} alt="专辑封面" width={48} height={48} className="h-12 w-12 rounded-xl object-cover" /> : <div className="grid h-12 w-12 place-items-center rounded-xl bg-violet-500/20 text-violet-200">♫</div>}<div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold text-white">{vehicle.media.current.title}</p><p className="truncate text-xs text-slate-500">{vehicle.media.current.artist} · 30 秒真实试听</p></div><button type="button" disabled={busy} onClick={() => void submit(vehicle.media.playing ? "暂停音乐" : "继续播放音乐")} className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/10 text-sm text-white hover:bg-white/20">{vehicle.media.playing ? "Ⅱ" : "▶"}</button></section>}
           {vehicle.media.current?.previewUrl && <audio ref={audioRef} src={vehicle.media.current.previewUrl} preload="metadata" onEnded={() => void submit("下一首")} />}
@@ -348,11 +371,10 @@ export default function AgentLab() {
       </section>
     </div>
 
-    <aside className="min-w-0 xl:sticky xl:top-[94px] xl:h-[calc(100vh-114px)]"><section className="flex h-[760px] max-h-[calc(100vh-114px)] min-h-[640px] flex-col overflow-hidden rounded-3xl border border-white/10 bg-[#0b1220] shadow-2xl shadow-black/30"><div className="border-b border-white/10 px-4 pt-4"><div className="mb-3 flex items-center justify-between gap-3"><div><h2 className="font-semibold">座舱主智能体</h2><p className="mt-0.5 text-xs text-slate-500">统一交互 · 多领域编排 · 策略核执行</p></div><button type="button" disabled={!speechOutputSupported} aria-pressed={voiceReply} onClick={() => { window.speechSynthesis?.cancel(); setVoiceReply((current) => !current); }} className={`rounded-lg border px-2.5 py-1.5 text-xs ${voiceReply ? "border-cyan-400/25 bg-cyan-400/10 text-cyan-300" : "border-white/10 text-slate-500"}`}>语音播报 {voiceReply ? "开" : "关"}</button></div><div className="grid grid-cols-5 gap-1 rounded-xl bg-black/20 p-1">{([["assistant", "对话"], ["plan", `任务 ${taskPlan?.nodes.length ?? 0}`], ["trace", `记录 ${traces.length}`], ["policy", "安全"], ["history", `历史 ${conversations.length}`]] as Array<[Panel, string]>).map(([value, label]) => <button key={value} onClick={() => setPanel(value)} className={`rounded-lg px-1 py-2 text-xs font-medium ${panel === value ? "bg-white/10 text-white shadow" : "text-slate-500 hover:text-slate-200"}`}>{label}</button>)}</div></div>
-      {panel === "assistant" && <><div ref={chatScrollRef} className="flex-1 space-y-4 overflow-y-auto p-4">{messages.map((message, index) => <div key={`${message.time}-${index}`} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}><div className={`max-w-[90%] rounded-2xl px-4 py-3 text-sm leading-6 ${message.role === "user" ? "rounded-br-md bg-blue-500 text-white" : "rounded-bl-md border border-white/[0.06] bg-white/[0.05] text-slate-200"}`}><p>{message.content}</p><p className={`mt-1 text-[11px] ${message.role === "user" ? "text-blue-100" : "text-slate-600"}`}>{message.time}</p></div></div>)}{busy && <div className="w-fit rounded-2xl rounded-bl-md border border-cyan-400/15 bg-cyan-400/[0.07] px-4 py-3 text-sm text-cyan-200"><span className="mr-2 inline-block h-2 w-2 animate-pulse rounded-full bg-cyan-300" />正在规划并执行工具链…</div>}</div><div className="border-t border-white/10 p-4"><div className="mb-3 flex gap-2 overflow-x-auto pb-1">{prompts.map((prompt) => <button key={prompt} disabled={busy || !sessionId || listening} onClick={() => void submit(prompt)} className="shrink-0 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs text-slate-400 hover:border-cyan-400/30 hover:text-cyan-200 disabled:opacity-40">{prompt}</button>)}</div><p className={`mb-2 text-xs ${listening ? "text-rose-300" : "text-slate-600"}`}>{voiceSupported ? voiceNotice : "当前浏览器不支持语音识别，键盘输入可用"}</p><form className="flex items-center gap-2 rounded-2xl border border-white/10 bg-black/20 p-2 focus-within:border-blue-400/40" onSubmit={onSubmit}><button type="button" disabled={busy || !voiceSupported} aria-label={listening ? "停止语音输入" : "开始中文语音输入"} onClick={toggleVoiceInput} className={`h-10 rounded-xl px-3 text-sm font-medium ${listening ? "bg-rose-500/20 text-rose-300" : "bg-white/5 text-slate-300"}`}>{listening ? "停止" : "语音"}</button><input value={input} onChange={(event) => setInput(event.target.value)} disabled={busy} placeholder="例如：打开主驾通风2挡，再导航到昌平区政府" className="min-w-0 flex-1 bg-transparent px-2 py-2 text-sm text-white outline-none placeholder:text-slate-600" />{input && <button type="button" disabled={busy} onClick={() => setInput("")} className="h-10 px-2 text-xs text-slate-500 hover:text-slate-200">清空</button>}<button disabled={busy || listening || !sessionId || !input.trim()} className="h-10 rounded-xl bg-blue-500 px-4 text-sm font-semibold text-white hover:bg-blue-400 disabled:opacity-30">发送</button></form></div></>}
-      {panel === "plan" && <div className="flex-1 overflow-y-auto p-4"><TaskPlanPanel plan={taskPlan} traces={traces} stateVersion={stateVersion} /></div>}
-      {panel === "trace" && <div className="flex-1 space-y-3 overflow-y-auto p-4">{!traces.length && <div className="rounded-2xl border border-dashed border-white/10 p-8 text-center text-sm leading-6 text-slate-500">执行任务后，这里会展示模型选择的工具、严格参数、策略结果和执行回执。</div>}{traces.map((trace, index) => <TraceCard key={`${trace.id}-${index}`} trace={trace} index={index} />)}</div>}
-      {panel === "policy" && <div className="flex-1 space-y-3 overflow-y-auto p-4"><div className="rounded-2xl border border-cyan-400/15 bg-cyan-400/[0.06] p-4 text-sm leading-6 text-cyan-100">当前演示身份：<strong>{zhCN.roles[role]}</strong>。模型负责规划，确定性策略层掌握最终执行权；页面角色用于演示 ABAC，不等同于生产环境可信身份认证。</div>{policies.map(([title, description], index) => <div key={title} className="flex gap-3 rounded-xl border border-white/[0.07] bg-white/[0.03] p-3"><span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-emerald-400/10 text-xs font-semibold text-emerald-300">P{index + 1}</span><div><p className="text-sm font-medium text-slate-200">{title}</p><p className="mt-1 text-xs leading-5 text-slate-500">{description}</p></div></div>)}</div>}
+    <aside className="min-w-0 xl:sticky xl:top-[94px] xl:h-[calc(100vh-114px)]"><section className="flex h-[760px] max-h-[calc(100vh-114px)] min-h-[640px] flex-col overflow-hidden rounded-3xl border border-white/10 bg-[#0b1220] shadow-2xl shadow-black/30"><div className="border-b border-white/10 px-4 pt-4"><div className="mb-3 flex items-center justify-between gap-3"><div><h2 className="font-semibold">座舱主智能体</h2><p className="mt-0.5 text-xs text-slate-500">统一交互 · 可信任务编译 · 策略核执行</p></div><button type="button" disabled={!speechOutputSupported} aria-pressed={voiceReply} onClick={() => { window.speechSynthesis?.cancel(); setVoiceReply((current) => !current); }} className={`rounded-lg border px-2.5 py-1.5 text-xs ${voiceReply ? "border-cyan-400/25 bg-cyan-400/10 text-cyan-300" : "border-white/10 text-slate-500"}`}>语音播报 {voiceReply ? "开" : "关"}</button></div><div className="grid grid-cols-4 gap-1 rounded-xl bg-black/20 p-1">{([["assistant", "对话"], ["plan", `任务 ${taskPlan?.nodes.length ?? 0}`], ["memory", "偏好"], ["history", `历史 ${conversations.length}`]] as Array<[Panel, string]>).map(([value, label]) => <button key={value} onClick={() => setPanel(value)} className={`rounded-lg px-1 py-2 text-xs font-medium ${panel === value ? "bg-white/10 text-white shadow" : "text-slate-500 hover:text-slate-200"}`}>{label}</button>)}</div></div>
+      {panel === "assistant" && <><div ref={chatScrollRef} className="flex-1 space-y-4 overflow-y-auto p-4">{messages.map((message, index) => <div key={`${message.time}-${index}`} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}><div className={`max-w-[90%] rounded-2xl px-4 py-3 text-sm leading-6 ${message.role === "user" ? "rounded-br-md bg-blue-500 text-white" : "rounded-bl-md border border-white/[0.06] bg-white/[0.05] text-slate-200"}`}><p>{message.content}</p><p className={`mt-1 text-[11px] ${message.role === "user" ? "text-blue-100" : "text-slate-600"}`}>{message.time}</p></div></div>)}{busy && <div className="flex w-fit items-center gap-3 rounded-2xl rounded-bl-md border border-cyan-400/15 bg-cyan-400/[0.07] px-4 py-3 text-sm text-cyan-200"><span><span className="mr-2 inline-block h-2 w-2 animate-pulse rounded-full bg-cyan-300" />正在规划并执行工具链…</span>{activeOperationKey && <button type="button" onClick={() => void cancelActiveTask()} className="rounded-lg bg-rose-400/10 px-2 py-1 text-xs text-rose-200 hover:bg-rose-400/20">取消任务</button>}</div>}</div><div className="border-t border-white/10 p-4"><div className="mb-3 flex gap-2 overflow-x-auto pb-1">{prompts.map((prompt) => <button key={prompt} disabled={busy || !sessionId || listening} onClick={() => void submit(prompt)} className="shrink-0 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs text-slate-400 hover:border-cyan-400/30 hover:text-cyan-200 disabled:opacity-40">{prompt}</button>)}</div><p className={`mb-2 text-xs ${listening ? "text-rose-300" : "text-slate-600"}`}>{voiceSupported ? voiceNotice : "当前浏览器不支持语音识别，键盘输入可用"}</p><form className="flex items-center gap-2 rounded-2xl border border-white/10 bg-black/20 p-2 focus-within:border-blue-400/40" onSubmit={onSubmit}><button type="button" disabled={busy || !voiceSupported} aria-label={listening ? "停止语音输入" : "开始中文语音输入"} onClick={toggleVoiceInput} className={`h-10 rounded-xl px-3 text-sm font-medium ${listening ? "bg-rose-500/20 text-rose-300" : "bg-white/5 text-slate-300"}`}>{listening ? "停止" : "语音"}</button><input value={input} onChange={(event) => setInput(event.target.value)} disabled={busy} placeholder="例如：打开主驾通风2挡，再导航到昌平区政府" className="min-w-0 flex-1 bg-transparent px-2 py-2 text-sm text-white outline-none placeholder:text-slate-600" />{input && <button type="button" disabled={busy} onClick={() => setInput("")} className="h-10 px-2 text-xs text-slate-500 hover:text-slate-200">清空</button>}<button disabled={busy || listening || !sessionId || !input.trim()} className="h-10 rounded-xl bg-blue-500 px-4 text-sm font-semibold text-white hover:bg-blue-400 disabled:opacity-30">发送</button></form></div></>}
+      {panel === "plan" && <div className="flex-1 overflow-y-auto p-4"><TaskPlanPanel plan={taskPlan} traces={traces} /></div>}
+      {panel === "memory" && <div className="flex-1 space-y-4 overflow-y-auto p-4"><div className="rounded-2xl border border-violet-400/20 bg-violet-400/[0.06] p-4"><p className="text-sm font-semibold text-violet-100">本地偏好记忆</p><p className="mt-2 text-xs leading-6 text-slate-400">{memory.consentGranted ? "已授权：偏好以匿名浏览器标识保存到本机数据库，90 天后自动过期。" : "未授权：智能体只使用当前会话上下文，不会保存长期偏好。"}</p><button type="button" disabled={busy || !sessionId} onClick={() => void updateMemoryConsent()} className={`mt-3 w-full rounded-xl px-3 py-2 text-xs font-semibold ${memory.consentGranted ? "bg-rose-400/10 text-rose-200 hover:bg-rose-400/20" : "bg-violet-400/15 text-violet-100 hover:bg-violet-400/25"}`}>{memory.consentGranted ? "撤回授权并删除偏好" : "授权保存 90 天"}</button></div><div className="rounded-2xl border border-white/[0.07] bg-white/[0.03] p-4"><p className="text-xs font-medium text-slate-300">已保存偏好</p>{Object.keys(memory.preferences).length ? <dl className="mt-3 space-y-2">{Object.entries(memory.preferences).map(([key, value]) => <div key={key} className="flex items-center justify-between gap-3 rounded-xl bg-black/20 px-3 py-2 text-xs"><dt className="text-slate-500">{key}</dt><dd className="text-slate-200">{value}</dd></div>)}</dl> : <p className="mt-3 text-xs leading-5 text-slate-500">暂无偏好。授权后可说“记住我喜欢 22 度”或“忘记我喜欢的温度”。</p>}</div><a href="/validation?tab=trace" className="block rounded-xl border border-cyan-400/20 bg-cyan-400/[0.06] p-3 text-xs leading-5 text-cyan-200 hover:bg-cyan-400/[0.1]">安全策略、工具回执和版本详情已移至验证中心 ↗</a></div>}
       {panel === "history" && <div className="flex-1 space-y-3 overflow-y-auto p-4"><div className="rounded-2xl border border-violet-400/15 bg-violet-400/[0.06] p-4 text-xs leading-6 text-violet-100">新建对话不会删除旧记录。这里保存最近 20 段浏览器本地对话；它不是云端账号记录，清除浏览器数据后会消失。</div>{!conversations.length && <div className="rounded-2xl border border-dashed border-white/10 p-8 text-center text-sm text-slate-500">还没有历史对话。</div>}{conversations.map((conversation) => <details key={conversation.sessionId} className="group rounded-2xl border border-white/[0.07] bg-white/[0.03]"><summary className="cursor-pointer list-none p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate text-sm font-medium text-slate-200">{conversation.title}</p><p className="mt-1 text-[11px] text-slate-500">{new Date(conversation.updatedAt).toLocaleString("zh-CN", { hour12: false })} · {conversation.messages.length} 条消息</p></div>{conversation.sessionId === sessionId && <span className="shrink-0 rounded-full bg-emerald-400/10 px-2 py-1 text-[10px] text-emerald-300">当前</span>}</div></summary><div className="space-y-2 border-t border-white/[0.07] p-3">{conversation.messages.map((message, index) => <div key={`${message.time}-${index}`} className="rounded-xl bg-black/20 p-3"><p className="text-[10px] text-slate-600">{message.role === "user" ? "用户" : "智能体"} · {message.time}</p><p className="mt-1 text-xs leading-5 text-slate-300">{message.content}</p></div>)}</div></details>)}</div>}
     </section></aside></section>
   </main>;

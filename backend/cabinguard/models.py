@@ -181,6 +181,7 @@ class VehicleState(BaseModel):
     estimated_arrival_battery: float | None = Field(
         None, ge=0, le=100, alias="estimatedArrivalBattery"
     )
+    perception_event: str | None = Field(None, alias="perceptionEvent")
 
     def public_dict(self) -> dict[str, object]:
         return self.model_dump(by_alias=True)

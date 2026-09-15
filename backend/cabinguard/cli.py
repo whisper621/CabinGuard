@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import sys
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
@@ -10,6 +11,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from .agent import AgentService, DeepSeekError
+from .capabilities import capability_manifest
 from .reliability import load_suite, run_suite
 from .session import SessionStore
 from .tools import ToolContext, execute_tool
@@ -95,10 +97,17 @@ def run_benchmark(args: argparse.Namespace) -> None:
         for case in suite.cases:
             print(f"{case.id}\t{case.task_type}\t{case.title}\t{len(case.turns)} turn(s)")
         return
-    if args.task_type == "all" and args.trials == 3 and not args.allow_large_run:
+    selected_count = sum(
+        1
+        for case in suite.cases
+        if (args.task_type == "all" or case.task_type == args.task_type)
+        and (not args.case or case.id in args.case)
+    )
+    requested_trials = selected_count * args.trials
+    if requested_trials > 30 and not args.allow_large_run:
         raise SystemExit(
-            "为控制模型成本，all + 3 trials 需要显式添加 --allow-large-run；"
-            "面试演示建议先选择单一 --task-type。"
+            f"本次将产生 {requested_trials} 次真实模型试次。为控制成本，超过 30 次需要显式添加 "
+            "--allow-large-run；建议先用 --case 选择少量任务冒烟。"
         )
 
     store = SessionStore()
@@ -135,11 +144,12 @@ def _build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--reload", action="store_true")
 
     subparsers.add_parser("demo", help="运行无需模型密钥的确定性 Python 演示")
+    subparsers.add_parser("capabilities", help="输出当前运行时能力与数量口径")
 
     chat = subparsers.add_parser("chat", help="在终端运行 DeepSeek Tool Calling Agent")
     chat.add_argument(
         "--scenario",
-        choices=["default", "rain", "moving"],
+        choices=["default", "rain", "moving", "highway", "low_battery", "child", "pickup", "rest", "air_quality"],
         default="default",
     )
 
@@ -160,6 +170,10 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8")
     _load_environment()
     parser = _build_parser()
     args = parser.parse_args(argv)
@@ -167,6 +181,9 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     if command == "demo":
         run_demo()
+        return
+    if command == "capabilities":
+        print(json.dumps(capability_manifest(), ensure_ascii=False, indent=2))
         return
     if command == "chat":
         asyncio.run(run_chat(args.scenario))

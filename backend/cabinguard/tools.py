@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from .models import GeoPoint, ToolExecution, VehicleState
 from .signals import evaluate_write, signal_state
 
-TOOL_VERSION = "7.0.0-python"
+TOOL_VERSION = "8.0.0-python"
 NAVIGATION_TOOL_NAMES = frozenset({"search_places", "plan_navigation"})
 MEDIA_TOOL_NAMES = frozenset({"play_media"})
 ONLINE_TOOL_NAMES = NAVIGATION_TOOL_NAMES | MEDIA_TOOL_NAMES
@@ -168,7 +168,7 @@ TOOL_DESCRIPTIONS = {
     "get_weather": "读取当前位置天气和降雨概率。操作天窗前必须调用。",
     "get_climate_state": "读取车内温度、空调设定、风量和循环模式。调整空调前调用。",
     "set_climate": "设置空调目标温度、风量和循环模式。参数必须完整且有效。",
-    "search_charging_stations": "结合当前路线搜索快充站。当前请求中必须先调用 get_vehicle_state。",
+    "search_charging_stations": "结合当前路线检索补能站。已授权外部位置时查询公开 OpenStreetMap POI；未授权或服务失败时明确降级为演示目录。当前请求中必须先调用 get_vehicle_state。",
     "start_navigation": "开始补能导航。用户必须明确要求导航，且目的地必须来自本轮充电站搜索结果。",
     "search_places": "使用外部地理编码服务检索任意普通地点、地址或行政区。一般导航前先调用，返回候选 ID、名称和地址。",
     "plan_navigation": "基于 search_places 返回的候选 ID，调用外部道路服务生成真实道路距离、ETA、路线折线与步骤。需要用户明确导航意图。",
@@ -185,7 +185,7 @@ TOOL_DESCRIPTIONS = {
     "play_media": "联网搜索音乐并加载真实可播放的 30 秒试听队列；完整歌曲受内容版权限制。",
     "control_media": "控制当前媒体的播放、暂停、停止、上下曲和音量。",
     "get_capabilities": "读取当前 Agent 实际注册的工具、VSS 信号、约束和外部集成摘要。回答能力范围问题时调用。",
-    "manage_preferences": "在当前演示会话内记住、列出或删除用户明确指定的偏好。remember/forget 必须来自本轮用户明确要求。",
+    "manage_preferences": "记住、列出或删除用户明确指定的偏好。默认仅限当前演示会话；授权后可写入可删除、带 TTL 的匿名本地偏好档。remember/forget 必须来自本轮用户明确要求。",
     "query_trip_history": "读取当前演示会话内由成功导航回执生成的最近行程记录。",
 }
 
@@ -212,6 +212,7 @@ class ToolContext:
     navigation_authorized: bool = False
     place_search_authorized: bool = False
     allowed_navigation_destinations: tuple[str, ...] = ()
+    charging_candidates: Mapping[str, Mapping[str, object]] = field(default_factory=dict)
     allow_high_speed_sunroof: bool = False
     allow_door_open: bool = False
     memory_write_authorized: bool = False
@@ -822,7 +823,7 @@ def execute_tool(
                 "导航目的地不在本轮充电站搜索结果中",
                 code="destination_not_verified",
             )
-        station = next(
+        station = context.charging_candidates.get(destination) or next(
             (item for item in CHARGING_STATIONS if item["name"] == destination),
             None,
         )
@@ -854,8 +855,8 @@ def execute_tool(
                 "destination": destination,
                 "route_distance_km": route_distance_km,
                 "eta_minutes": eta_minutes,
-                "route_provider": "CabinGuard navigation sandbox",
-                "data_freshness": "demo fixture",
+                "route_provider": str(station.get("data_source") or "CabinGuard navigation sandbox"),
+                "data_freshness": "公开 POI 坐标 + 演示补能路线" if station.get("data_source") else "demo fixture",
             },
         )
 

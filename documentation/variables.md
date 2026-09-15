@@ -10,6 +10,9 @@
 | `CABINGUARD_ROUTER_URL` | Python 道路算路适配器 | 仅服务端 | 可选；默认 OSRM 公共实例 | 外部服务可观察算路坐标，生产需商业协议 |
 | `CABINGUARD_NAV_COUNTRY_CODES` | Python 地点检索适配器 | 仅服务端 | 默认 `cn`，空值表示不按国家限制 | 范围过大可能增加同名歧义 |
 | `CABINGUARD_MAP_USER_AGENT` | Nominatim/OSRM 请求 | 仅服务端 | 标识应用和联系地址，需遵循供应商政策 | 无效标识可能导致公共服务拒绝 |
+| `CABINGUARD_PREFERENCE_DB` | 用户明确授权的本地偏好 | 仅服务端 | 可选；默认 `.runtime/cabinguard-preferences.sqlite3` | 文件需限制访问、备份和删除；当前不是账号级存储 |
+| `CABINGUARD_MEDIA_URL` | Python 音乐目录适配器 | 仅服务端 | 可选；默认 Apple iTunes Search API | 公共目录无 SLA，供应商变更会影响试听结果 |
+| `CABINGUARD_MEDIA_FALLBACK_URL` | Python 音乐目录降级适配器 | 仅服务端 | 可选；默认 Deezer API | 同上 |
 | `OPENAI_API_KEY` | `/api/session` | 仅服务端 | 本地/部署平台 Secret；泄露立即轮换 | Realtime API 成本与权限 |
 | `ENABLE_REALTIME_OUTPUT_GUARDRAIL` | `/api/responses` | 仅服务端 | 默认关闭；仅在验证 Realtime 输出审核时设为 `true` | 会增加模型调用成本与延迟 |
 | `HTTPS_PROXY` | 服务端供应商请求 | 仅服务端 | 本机或部署环境 | 代理可观察流量元数据，配置错误导致 502 |

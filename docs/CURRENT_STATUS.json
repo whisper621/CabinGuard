@@ -1,0 +1,53 @@
+{
+  "asOf": "2026-09-15",
+  "version": "0.8.0",
+  "architecture": {
+    "userVisibleAgents": 1,
+    "agentBoundaries": 3,
+    "orchestratorAgents": 1,
+    "domainAgentBoundaries": 2,
+    "deterministicServices": 5,
+    "domains": 6
+  },
+  "runtime": {
+    "registeredTools": 23,
+    "vssAlignedSignals": 41,
+    "declarativeConstraints": 9,
+    "vehicleExecution": "sandbox",
+    "defaultChatModelRequest": "deepseek-v4-flash",
+    "modelResultFields": ["requestedModel", "resolvedModel", "executionSource"]
+  },
+  "evaluation": {
+    "deterministicBaseContracts": 25,
+    "surfaceFormsPerContract": 8,
+    "deterministicScenarioCases": 200,
+    "compositeContracts": 24,
+    "liveSemanticTasks": 50,
+    "recommendedRunsPerTask": 3,
+    "fullLiveTrials": 150,
+    "liveExecutionStatus": "full_baseline_completed_targeted_fixes_verified",
+    "latestFullBaseline": {
+      "date": "2026-09-15",
+      "passedTrials": 113,
+      "totalTrials": 150,
+      "trialPassRate": 0.7533,
+      "passAt3": 0.86,
+      "passPower3": 0.62,
+      "providerConnectionFailures": 7,
+      "requestedModel": "deepseek-v4-flash",
+      "resolvedModel": "deepseek-flash"
+    },
+    "latestTargetedVerification": {
+      "date": "2026-09-15",
+      "cases": 4,
+      "trials": 12,
+      "passedTrials": 12,
+      "scope": "remaining systematic failures after staged fixes; not a full-suite rerun"
+    }
+  },
+  "automatedTests": {
+    "python": 342,
+    "typescript": 43,
+    "total": 385
+  }
+}

@@ -1,5 +1,7 @@
 # CabinGuard 基线评测记录
 
+> **历史实跑记录。** 本文只证明对应日期、提交和少量旧任务的结果，不代表 v0.8 的 50 个模型语义任务已运行；当前口径见 [CURRENT_STATUS](CURRENT_STATUS.md)。
+
 评测日期：2026-09-11  
 模型返回标识：`deepseek-flash`  
 环境：Windows、本地 Next.js 生产构建、模拟车辆与工具数据
@@ -41,7 +43,7 @@
 - 43 条 Vitest 用例覆盖语音追加、对话档案、会话场景、浏览器定位、坐标隐私、路线状态、确认 TTL、一次性消费、限流、明确确认/取消优先、工具参数拒绝、读取前置、降雨与行驶拦截、导航授权和结果依据。
 - GitHub Actions 在无供应商密钥的环境中执行 Ruff、Pytest、ESLint、typecheck、Vitest 和生产构建。
 - `npm run check` 已在本地完整通过；Next.js 已升级至 16.3.4，当前 `npm audit` 为 0 个已知漏洞。
-- 10 类 DeepSeek 行为评测没有在本次确定性重构后冒充重新运行结果；下一次有意调用付费模型时，应从 `/evaluation` 运行并保存新的 JSON 报告。
+- 10 类 DeepSeek 行为评测没有在本次确定性重构后冒充重新运行结果；下一次有意调用付费模型时，应通过 `python -m cabinguard benchmark`（或验证中心 `/validation` 的批量测试报告页）运行并保存新的 JSON 报告。
 
 ## Python 主链路验证
 

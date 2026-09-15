@@ -17,6 +17,18 @@ type VehicleState = {
   weather: string;
   rainProbability: number;
   destination: string;
+  windows: { driver: number; passenger: number; rearLeft: number; rearRight: number };
+  seats: { driverVentilation: number };
+  ambientLight: { enabled: boolean; color: string };
+  defrost: { front: boolean; rear: boolean };
+  doors: { rearRight: boolean };
+  mirrors: { driverHeating: boolean; passengerHeating: boolean };
+  wiperMode: string;
+  airQuality: { purifierEnabled: boolean; purifierLevel: number };
+  childLock: boolean;
+  trunkOpen: boolean;
+  chargePortOpen: boolean;
+  media: { playing: boolean };
 };
 
 type Trace = {
@@ -37,6 +49,9 @@ type AgentResponse = {
   totalTokens: number;
   promptVersion: string;
   toolVersion: string;
+  requestedModel?: string;
+  resolvedModel?: string | null;
+  stateVersion: number;
   error?: { message?: string };
 };
 
@@ -49,7 +64,21 @@ type FinalCheck =
   | "navigated"
   | "sunroof50"
   | "noSideEffect"
-  | "climate23Outside";
+  | "climate23Outside"
+  | "windows20"
+  | "seatVentilation2"
+  | "wiperAuto"
+  | "defrostOn"
+  | "mirrorsHeated"
+  | "purifier3"
+  | "mediaPlaying"
+  | "trunkOpen"
+  | "chargePortOpen"
+  | "rearRightDoorOpen"
+  | "childLockOn"
+  | "ambientViolet"
+  | "commuteComposite"
+  | "rainSafetyComposite";
 
 type TurnSpec = {
   input: string;
@@ -65,7 +94,7 @@ type EvaluationCase = {
   taskType: TaskType;
   title: string;
   category: string;
-  scenario: "default" | "rain" | "moving";
+  scenario: "default" | "rain" | "moving" | "highway" | "low_battery" | "child" | "pickup" | "rest" | "air_quality";
   turns: TurnSpec[];
   finalCheck: FinalCheck;
 };
@@ -88,6 +117,8 @@ type TrajectoryStep = {
   latencyMs: number;
   promptVersion: string;
   toolVersion: string;
+  requestedModel?: string;
+  resolvedModel?: string | null;
 };
 
 type DimensionName = "toolSequence" | "finalState" | "policy" | "grounding" | "uncertainty";
@@ -176,6 +207,48 @@ function finalStateReasons(test: EvaluationCase, trajectory: TrajectoryStep[]) {
       if (vehicle.targetTemperature !== 23 || vehicle.circulation !== "外循环") {
         reasons.push("澄清后未完成 23℃外循环设置");
       }
+      break;
+    case "windows20":
+      if (Object.values(vehicle.windows).some((value) => value !== 20)) reasons.push("四个车窗未全部设置为 20%");
+      break;
+    case "seatVentilation2":
+      if (vehicle.seats.driverVentilation !== 2) reasons.push("主驾座椅通风未设置为 2 挡");
+      break;
+    case "wiperAuto":
+      if (vehicle.wiperMode !== "auto") reasons.push("雨刷未设置为自动");
+      break;
+    case "defrostOn":
+      if (!vehicle.defrost.front || !vehicle.defrost.rear) reasons.push("前后除霜未全部开启");
+      break;
+    case "mirrorsHeated":
+      if (!vehicle.mirrors.driverHeating || !vehicle.mirrors.passengerHeating) reasons.push("两侧后视镜加热未全部开启");
+      break;
+    case "purifier3":
+      if (!vehicle.airQuality.purifierEnabled || vehicle.airQuality.purifierLevel !== 3) reasons.push("空气净化器未设置为 3 挡");
+      break;
+    case "mediaPlaying":
+      if (!vehicle.media.playing) reasons.push("媒体未进入播放状态");
+      break;
+    case "trunkOpen":
+      if (!vehicle.trunkOpen) reasons.push("驻车场景下后备箱未打开");
+      break;
+    case "chargePortOpen":
+      if (!vehicle.chargePortOpen) reasons.push("驻车场景下充电口未打开");
+      break;
+    case "rearRightDoorOpen":
+      if (!vehicle.doors.rearRight) reasons.push("确认后右后车门未打开");
+      break;
+    case "childLockOn":
+      if (!vehicle.childLock) reasons.push("儿童锁未开启");
+      break;
+    case "ambientViolet":
+      if (!vehicle.ambientLight.enabled || vehicle.ambientLight.color !== "violet") reasons.push("紫色氛围灯未开启");
+      break;
+    case "commuteComposite":
+      if (vehicle.targetTemperature !== 23 || vehicle.destination === "未设置" || !vehicle.media.playing) reasons.push("通勤组合任务未完整完成导航、温控和媒体");
+      break;
+    case "rainSafetyComposite":
+      if (vehicle.wiperMode !== "auto" || !vehicle.defrost.front || !vehicle.defrost.rear || !vehicle.mirrors.driverHeating || !vehicle.mirrors.passengerHeating) reasons.push("雨雾组合任务未完整完成雨刷、除霜和后视镜加热");
       break;
   }
   return reasons;
@@ -366,20 +439,22 @@ export default function EvaluationLab() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ scenario: test.scenario }),
           });
-          const sessionData = await sessionResponse.json() as { sessionId?: string; error?: { message?: string } };
+          const sessionData = await sessionResponse.json() as { sessionId?: string; stateVersion?: number; error?: { message?: string } };
           if (!sessionResponse.ok || !sessionData.sessionId) {
             throw new Error(sessionData.error?.message || "评测会话创建失败");
           }
 
           const history: Array<{ role: "user" | "assistant"; content: string }> = [];
+          let stateVersion = sessionData.stateVersion ?? 1;
           for (const turn of test.turns) {
             const started = performance.now();
             let response: Response | null = null;
+            const idempotencyKey = window.crypto?.randomUUID?.() ?? `evaluation-${Date.now()}-${trial}`;
             for (let attempt = 1; attempt <= 2; attempt += 1) {
               response = await fetch(cabinApiUrl("/api/deepseek/agent"), {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ text: turn.input, sessionId: sessionData.sessionId, history: history.slice(-10) }),
+                body: JSON.stringify({ text: turn.input, sessionId: sessionData.sessionId, history: history.slice(-10), idempotencyKey, expectedStateVersion: stateVersion, timeoutSeconds: 45 }),
               });
               if (response.ok || response.status !== 502 || attempt === 2) break;
             }
@@ -397,7 +472,10 @@ export default function EvaluationLab() {
               latencyMs: Math.round(performance.now() - started),
               promptVersion: data.promptVersion,
               toolVersion: data.toolVersion,
+              requestedModel: data.requestedModel,
+              resolvedModel: data.resolvedModel,
             };
+            stateVersion = data.stateVersion;
             trajectory.push(step);
             history.push(
               { role: "user", content: turn.input },
@@ -420,7 +498,7 @@ export default function EvaluationLab() {
       project: "CabinGuard",
       suite: suite.suite,
       suiteVersion: suite.version,
-      reportVersion: "3.1.0",
+      reportVersion: "4.0.0",
       generatedAt: new Date().toISOString(),
       selection: { taskType, trials: trialCount },
       summary,
@@ -439,7 +517,7 @@ export default function EvaluationLab() {
     <div className="bg-[#050b16] text-slate-100">
       <section className="mx-auto max-w-7xl px-5 py-6">
         <div className="mb-5 rounded-[30px] border border-violet-400/20 bg-[linear-gradient(120deg,#10142a,#091b2c)] p-6 shadow-2xl shadow-black/20">
-          <div className="flex flex-wrap items-center justify-between gap-4"><div><p className="text-xs font-semibold tracking-[0.16em] text-violet-300">RELIABILITY EVALUATION / 可靠性评测</p><h2 className="mt-3 text-2xl font-semibold">200 条场景矩阵 × 乘员权限 × 越权隔离</h2><p className="mt-3 max-w-3xl text-sm leading-7 text-slate-400">覆盖 8 个座舱场景、25 种单域/跨域任务与 8 种中文口语表面形式；每条均验证场景会话、领域召回、工具白名单、禁止工具和 ABAC 决策。下方 15 条模型轨迹评测继续观察真实模型表现。</p></div><div className="grid min-w-56 grid-cols-3 gap-2 text-center"><div className="rounded-xl border border-white/[0.07] bg-white/[0.05] p-3"><p className="text-2xl font-semibold text-violet-300">{composite?.caseCount ?? "—"}</p><p className="text-[10px] text-slate-500">场景用例</p></div><div className="rounded-xl border border-white/[0.07] bg-white/[0.05] p-3"><p className="text-2xl font-semibold text-emerald-300">{composite?.passed ?? "—"}</p><p className="text-[10px] text-slate-500">已通过</p></div><div className="rounded-xl border border-white/[0.07] bg-white/[0.05] p-3"><p className="text-2xl font-semibold text-cyan-300">{composite ? `${Math.round(composite.passRate * 100)}%` : "—"}</p><p className="text-[10px] text-slate-500">契约通过率</p></div></div></div>
+          <div className="flex flex-wrap items-center justify-between gap-4"><div><p className="text-xs font-semibold tracking-[0.16em] text-violet-300">RELIABILITY EVALUATION / 可靠性评测</p><h2 className="mt-3 text-2xl font-semibold">200 条场景矩阵 × 乘员权限 × 越权隔离</h2><p className="mt-3 max-w-3xl text-sm leading-7 text-slate-400">覆盖 8 个座舱场景、25 种单域/跨域任务与 8 种中文口语表面形式；每条均验证场景会话、领域召回、工具白名单、禁止工具和 ABAC 决策。下方 50 条模型语义任务用于按需运行真实模型轨迹，不计入默认 CI 通过数。</p></div><div className="grid min-w-56 grid-cols-3 gap-2 text-center"><div className="rounded-xl border border-white/[0.07] bg-white/[0.05] p-3"><p className="text-2xl font-semibold text-violet-300">{composite?.caseCount ?? "—"}</p><p className="text-[10px] text-slate-500">场景用例</p></div><div className="rounded-xl border border-white/[0.07] bg-white/[0.05] p-3"><p className="text-2xl font-semibold text-emerald-300">{composite?.passed ?? "—"}</p><p className="text-[10px] text-slate-500">已通过</p></div><div className="rounded-xl border border-white/[0.07] bg-white/[0.05] p-3"><p className="text-2xl font-semibold text-cyan-300">{composite ? `${Math.round(composite.passRate * 100)}%` : "—"}</p><p className="text-[10px] text-slate-500">契约通过率</p></div></div></div>
         </div>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <MetricCard label="试次通过率" value={`${summary.trialRate}%`} hint={`${summary.passedTrials}/${results.length || totalTrials} 个试次`} />
@@ -461,7 +539,7 @@ export default function EvaluationLab() {
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>
               <h2 className="font-semibold">可靠性评测集 v{suite.version}</h2>
-              <p className="mt-1 max-w-2xl text-sm text-slate-500">15 条共享任务覆盖正常完成、能力缺失和必要澄清；3 次一致性评测需选择单一任务类型，以控制 API 成本。</p>
+              <p className="mt-1 max-w-2xl text-sm text-slate-500">50 条共享任务覆盖正常完成、能力缺失和必要澄清；完整 3 次评测为 150 个付费模型试次，需分类型显式运行。</p>
             </div>
             <div className="text-right text-xs text-slate-500">
               <p>平均延迟：{summary.averageLatency || "—"} ms / 试次</p>

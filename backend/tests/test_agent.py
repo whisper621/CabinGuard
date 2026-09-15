@@ -61,7 +61,7 @@ def test_multi_turn_agent_executes_read_then_write() -> None:
             {"content": "已将空调调到 23℃，风量 3 档并切换外循环。"},
         ]
     )
-    service = AgentService(store, client)  # type: ignore[arg-type]
+    service = AgentService(store, client, enable_hybrid_router=False)  # type: ignore[arg-type]
     result = asyncio.run(service.run(text="把空调调到23度", session_id=session.id))
 
     assert [trace["name"] for trace in result["traces"]] == [
@@ -147,7 +147,12 @@ def test_agent_enforces_rear_child_policy_and_writes_evidence() -> None:
             {"content": "儿童乘员的写操作需要监护授权。"},
         ]
     )
-    service = AgentService(store, client, events=events)  # type: ignore[arg-type]
+    service = AgentService(
+        store,
+        client,  # type: ignore[arg-type]
+        events=events,
+        enable_hybrid_router=False,
+    )
     result = asyncio.run(service.run(text="把左后车窗打开一半", session_id=session.id))
 
     assert result["vehicle"]["windows"]["rearLeft"] == 0
@@ -157,6 +162,8 @@ def test_agent_enforces_rear_child_policy_and_writes_evidence() -> None:
         "plan.created": 1,
         "policy.decision": 2,
         "tool.receipt": 2,
+        "operation.started": 1,
+        "operation.completed": 1,
     }
 
 

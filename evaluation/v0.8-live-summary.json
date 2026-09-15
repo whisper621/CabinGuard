@@ -1,0 +1,51 @@
+{
+  "project": "CabinGuard",
+  "suiteVersion": "4.0.0",
+  "reportVersion": "4.0.0",
+  "promptVersion": "8.0.0-python",
+  "toolVersion": "8.0.0-python",
+  "fullBaseline": {
+    "generatedAt": "2026-09-15T16:42:43.065677+08:00",
+    "codeState": "pre-targeted-fixes working tree",
+    "requestedModel": "deepseek-v4-flash",
+    "resolvedModelOnSuccessfulProviderResponses": "deepseek-flash",
+    "cases": 50,
+    "trialsPerCase": 3,
+    "totalTrials": 150,
+    "passedTrials": 113,
+    "trialPassRate": 0.7533333333,
+    "passAt3": 0.86,
+    "passPower3": 0.62,
+    "tokens": 1007295,
+    "averageLatencyMs": 9784,
+    "p95LatencyMs": 23428,
+    "providerConnectionFailures": 7,
+    "byTaskType": {
+      "base": {"passed": 45, "total": 60},
+      "hallucination": {"passed": 38, "total": 45},
+      "disambiguation": {"passed": 30, "total": 45}
+    },
+    "failedDimensionCounts": {
+      "finalState": 22,
+      "toolSequence": 18,
+      "uncertainty": 15,
+      "policy": 9
+    }
+  },
+  "finalTargetedVerification": {
+    "generatedAt": "2026-09-15T16:56:07.882809+08:00",
+    "codeState": "after final targeted fixes",
+    "caseIds": ["B12", "B19", "B20", "D15"],
+    "trialsPerCase": 3,
+    "totalTrials": 12,
+    "passedTrials": 12,
+    "trialPassRate": 1.0,
+    "passAt3": 1.0,
+    "passPower3": 1.0,
+    "tokens": 60900,
+    "averageLatencyMs": 4461,
+    "p95LatencyMs": 8699,
+    "resolvedModel": "deepseek-flash"
+  },
+  "interpretationBoundary": "The targeted result closes four known failures but is not a post-fix full-suite score. Raw trajectories stay local under evaluation/results/."
+}

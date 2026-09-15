@@ -1,0 +1,2 @@
+participant_id,task_id,order,scenario,role,input_mode,location_consent,memory_consent,original_utterance,recognized_text,task_completed,first_attempt_success,severe_misexecution,completion_seconds,safety_explanation_correct,proactive_suggestion_rating_1_5,observed_steps,failure_category,participant_quote,moderator_notes,code_commit,requested_model,resolved_model,recording_consent,deletion_requested
+PXX,UXX,1,default,driver,voice,false,false,,,false,false,false,,false,,,,,,,,,,false,false

@@ -8,7 +8,7 @@ from typing import Literal
 from .models import VehicleState
 
 SignalEventName = Literal[
-    "urban_drive", "highway_drive", "park", "rain", "clear_weather", "low_battery", "reset"
+    "urban_drive", "highway_drive", "park", "rain", "clear_weather", "low_battery", "windshield_visibility_low", "reset"
 ]
 
 
@@ -27,6 +27,7 @@ EVENT_LABELS: dict[SignalEventName, str] = {
     "rain": "降雨事件",
     "clear_weather": "天气转晴",
     "low_battery": "低电量事件",
+    "windshield_visibility_low": "视觉感知：前风挡可视性下降（演示事件）",
     "reset": "恢复默认数字孪生状态",
 }
 
@@ -52,6 +53,9 @@ def apply_signal_event(name: SignalEventName, vehicle: VehicleState) -> SignalEv
     elif name == "low_battery":
         updates = {"battery": 12, "range": 48}
         signals = ("Vehicle.Powertrain.TractionBattery.StateOfCharge.Current", "Vehicle.LowVoltageBattery.CurrentVoltage")
+    elif name == "windshield_visibility_low":
+        updates = {"perception_event": "windshield_visibility_low"}
+        signals = ("PerceptionEventAdapter.windshield_visibility_low",)
     else:
         updates = {
             "speed": 0,
@@ -60,6 +64,7 @@ def apply_signal_event(name: SignalEventName, vehicle: VehicleState) -> SignalEv
             "range": 310,
             "weather": "多云",
             "rain_probability": 20,
+            "perception_event": None,
         }
         signals = (
             "Vehicle.Speed",

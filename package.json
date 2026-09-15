@@ -1,8 +1,11 @@
 {
   "name": "cabinguard",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "可信智能座舱任务 Agent：多轮工具调用、服务端安全边界、可观测执行与自动评测",
   "private": true,
+  "engines": {
+    "node": ">=24 <25"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",

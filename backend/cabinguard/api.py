@@ -18,6 +18,8 @@ from .capabilities import capability_manifest
 from .evaluation_v6 import load_composite_suite, score_composite_case, suite_summary
 from .planning import compile_task_plan
 from .policy_kernel import OccupantRole
+from .preference_store import MAX_PREFERENCE_TTL_DAYS, PreferenceStore
+from .proactive import derive_proactive_suggestions
 from .reliability import TrajectoryStep, evaluate_trial, load_suite
 from .scenario_matrix_v7 import scenario_matrix_summary
 from .session import SESSION_TTL_SECONDS, SessionStore
@@ -37,7 +39,7 @@ class BrowserLocation(BaseModel):
 
 
 class SessionRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
     scenario: Literal[
         "default",
         "rain",
@@ -51,6 +53,8 @@ class SessionRequest(BaseModel):
     ] = "default"
     location: BrowserLocation | None = None
     occupant_role: OccupantRole = Field("driver", alias="occupantRole")
+    memory_profile_id: str | None = Field(None, min_length=12, max_length=100, alias="memoryProfileId")
+    memory_consent: bool = Field(False, alias="memoryConsent")
 
 
 class PlanRequest(BaseModel):
@@ -91,6 +95,9 @@ class AgentRequest(BaseModel):
     text: str = Field(min_length=1, max_length=500)
     session_id: UUID = Field(alias="sessionId")
     history: list[HistoryItem] = Field(default_factory=list, max_length=10)
+    idempotency_key: str | None = Field(None, min_length=12, max_length=128, alias="idempotencyKey")
+    expected_state_version: int | None = Field(None, ge=1, alias="expectedStateVersion")
+    timeout_seconds: int = Field(45, ge=5, le=45, alias="timeoutSeconds")
 
     @field_validator("text")
     @classmethod
@@ -122,9 +129,26 @@ class ScoreRequest(BaseModel):
     trajectory: list[TrajectoryStep] = Field(min_length=1, max_length=4)
 
 
+class MemoryConsentRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    session_id: UUID = Field(alias="sessionId")
+    granted: bool
+    ttl_days: int = Field(90, ge=1, le=MAX_PREFERENCE_TTL_DAYS, alias="ttlDays")
+    delete_preferences: bool = Field(True, alias="deletePreferences")
+
+
+class OperationCancelRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    session_id: UUID = Field(alias="sessionId")
+    idempotency_key: str | None = Field(None, min_length=12, max_length=128, alias="idempotencyKey")
+
+
 store = SessionStore()
 deepseek = DeepSeekClient()
-agent = AgentService(store, deepseek)
+preferences = PreferenceStore()
+agent = AgentService(store, deepseek, preferences=preferences)
 
 app = FastAPI(
     title="CabinGuard Python Agent API",
@@ -219,6 +243,8 @@ async def create_session(payload: SessionRequest, request: Request) -> JSONRespo
     if limited:
         return limited
     location = payload.location
+    if payload.memory_consent and payload.memory_profile_id:
+        preferences.grant(payload.memory_profile_id)
     session = store.create_session(
         payload.scenario,
         latitude=location.latitude if location else None,
@@ -226,6 +252,8 @@ async def create_session(payload: SessionRequest, request: Request) -> JSONRespo
         accuracy_meters=location.accuracy_meters if location else None,
         allow_external_routing=location.allow_external_routing if location else False,
         occupant_role=payload.occupant_role,
+        memory_profile_id=payload.memory_profile_id,
+        memory_consent=payload.memory_consent,
     )
     return JSONResponse(
         {
@@ -235,6 +263,16 @@ async def create_session(payload: SessionRequest, request: Request) -> JSONRespo
             "expiresInSeconds": SESSION_TTL_SECONDS,
             "occupantRole": session.occupant_role,
             "stateVersion": session.state_version,
+            "memory": preferences.public_status(session.memory_profile_id)
+            if session.memory_consent
+            else {
+                "scope": "current_demo_session",
+                "consentGranted": False,
+                "retention": "仅本次 30 分钟演示会话。",
+                "preferences": dict(session.preferences),
+                "deletion": "会话过期后自动清除。",
+            },
+            "proactiveSuggestions": [item.public_dict() for item in derive_proactive_suggestions(session.vehicle)],
         }
     )
 
@@ -255,6 +293,16 @@ async def resume_session(session_id: UUID) -> JSONResponse:
             "expiresInSeconds": SESSION_TTL_SECONDS,
             "occupantRole": session.occupant_role,
             "stateVersion": session.state_version,
+            "memory": preferences.public_status(session.memory_profile_id)
+            if session.memory_consent
+            else {
+                "scope": "current_demo_session",
+                "consentGranted": False,
+                "retention": "仅本次 30 分钟演示会话。",
+                "preferences": dict(session.preferences),
+                "deletion": "会话过期后自动清除。",
+            },
+            "proactiveSuggestions": [item.public_dict() for item in derive_proactive_suggestions(session.vehicle)],
         }
     )
 
@@ -285,6 +333,84 @@ async def evidence(session_id: UUID) -> JSONResponse:
             "events": events,
         }
     )
+
+
+@app.get("/api/cabin/proactive/{session_id}")
+async def proactive_suggestions(session_id: UUID) -> JSONResponse:
+    session = store.get_session(str(session_id))
+    if session is None:
+        return JSONResponse(status_code=404, content={"error": {"code": "session_not_found", "message": "演示会话已过期"}})
+    return JSONResponse(
+        {
+            "sessionId": session.id,
+            "suggestions": [item.public_dict() for item in derive_proactive_suggestions(session.vehicle)],
+            "executionBoundary": "建议不会自动执行；用户接受后仍需经过 TaskPlan、ABAC 与策略核。",
+        }
+    )
+
+
+@app.get("/api/cabin/memory/{session_id}")
+async def memory_status(session_id: UUID) -> JSONResponse:
+    session = store.get_session(str(session_id))
+    if session is None:
+        return JSONResponse(status_code=404, content={"error": {"code": "session_not_found", "message": "演示会话已过期"}})
+    if session.memory_consent:
+        payload = preferences.public_status(session.memory_profile_id)
+    else:
+        payload = {
+            "scope": "current_demo_session",
+            "consentGranted": False,
+            "preferences": dict(session.preferences),
+            "deletion": "当前偏好会随演示会话过期；开启长期偏好前需要明确授权。",
+        }
+    return JSONResponse({"sessionId": session.id, **payload})
+
+
+@app.post("/api/cabin/memory/consent")
+async def set_memory_consent(payload: MemoryConsentRequest, request: Request) -> JSONResponse:
+    limited = _rate_limit(request, "memory-consent")
+    if limited:
+        return limited
+    session = store.get_session(str(payload.session_id))
+    if session is None:
+        return JSONResponse(status_code=404, content={"error": {"code": "session_not_found", "message": "演示会话已过期"}})
+    if not session.memory_profile_id:
+        return JSONResponse(status_code=400, content={"error": {"code": "memory_profile_missing", "message": "当前浏览器未提供匿名偏好档标识，无法开启长期偏好。"}})
+    if payload.granted:
+        preferences.grant(session.memory_profile_id, ttl_days=payload.ttl_days)
+        store.set_memory_consent(session, True)
+    else:
+        preferences.revoke(session.memory_profile_id, delete_preferences=payload.delete_preferences)
+        store.set_memory_consent(session, False)
+    agent.events.append(
+        session_id=session.id,
+        plan_id=session.active_plan_id,
+        event_type="memory.consent",
+        state_version=session.state_version,
+        payload={"granted": payload.granted, "ttlDays": payload.ttl_days, "deletePreferences": payload.delete_preferences},
+    )
+    return JSONResponse({"sessionId": session.id, "memory": preferences.public_status(session.memory_profile_id)})
+
+
+@app.post("/api/cabin/operations/cancel")
+async def cancel_operation(payload: OperationCancelRequest, request: Request) -> JSONResponse:
+    limited = _rate_limit(request, "operation-cancel")
+    if limited:
+        return limited
+    session = store.get_session(str(payload.session_id))
+    if session is None:
+        return JSONResponse(status_code=404, content={"error": {"code": "session_not_found", "message": "演示会话已过期"}})
+    operation = store.cancel_operation(session, idempotency_key=payload.idempotency_key)
+    if operation is None:
+        return JSONResponse(status_code=409, content={"error": {"code": "operation_not_running", "message": "没有可取消的运行中任务"}})
+    event = agent.events.append(
+        session_id=session.id,
+        plan_id=session.active_plan_id,
+        event_type="operation.cancelled",
+        state_version=session.state_version,
+        payload=operation.public_dict(),
+    )
+    return JSONResponse({"sessionId": session.id, "operation": operation.public_dict(), "event": event})
 
 
 @app.post("/api/cabin/signal-event")
@@ -318,6 +444,7 @@ async def inject_signal_event(payload: SignalEventRequest, request: Request) -> 
             "event": event,
             "vehicle": result.vehicle.public_dict(),
             "stateVersion": session.state_version,
+            "proactiveSuggestions": [item.public_dict() for item in derive_proactive_suggestions(result.vehicle)],
         }
     )
 
@@ -367,7 +494,13 @@ async def run_agent(payload: AgentRequest, request: Request) -> JSONResponse:
             text=payload.text,
             session_id=str(payload.session_id),
             history=[item.model_dump() for item in payload.history],
+            idempotency_key=payload.idempotency_key,
+            expected_state_version=payload.expected_state_version,
+            timeout_seconds=payload.timeout_seconds,
         )
+        session = store.get_session(str(payload.session_id))
+        if session is not None:
+            result["proactiveSuggestions"] = [item.public_dict() for item in derive_proactive_suggestions(session.vehicle)]
         return JSONResponse(result)
     except SessionNotFoundError as error:
         return JSONResponse(

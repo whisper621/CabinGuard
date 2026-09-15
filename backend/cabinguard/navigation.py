@@ -166,7 +166,7 @@ class NavigationProvider:
         return {
             "User-Agent": os.getenv(
                 "CABINGUARD_MAP_USER_AGENT",
-                "CabinGuard/0.4 (+https://github.com/whisper621/CabinGuard)",
+                "CabinGuard/0.8 (+https://github.com/whisper621/CabinGuard)",
             ),
             "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.5",
         }

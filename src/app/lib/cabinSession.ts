@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto";
 
-export type CabinScenario = "default" | "rain" | "moving";
+export type CabinScenario = "default" | "rain" | "moving" | "highway" | "low_battery" | "child" | "pickup" | "rest" | "air_quality";
 export type BrowserLocation = {
   latitude: number;
   longitude: number;
@@ -232,7 +232,17 @@ export function consumeRateLimit(key: string) {
 }
 
 export const isCabinScenario = (value: unknown): value is CabinScenario =>
-  value === "default" || value === "rain" || value === "moving";
+  typeof value === "string" && [
+    "default",
+    "rain",
+    "moving",
+    "highway",
+    "low_battery",
+    "child",
+    "pickup",
+    "rest",
+    "air_quality",
+  ].includes(value);
 
 export const isBrowserLocation = (value: unknown): value is BrowserLocation => {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;

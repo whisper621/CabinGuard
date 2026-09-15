@@ -1,8 +1,8 @@
 # CabinGuard 系统架构与执行边界
 
-## 1. v0.6 主链路与兼容运行方式
+## 1. v0.7 主链路与兼容运行方式
 
-v0.6 的主演示统一位于 `/`：带大地图的智能座舱同时展示真实道路导航、TaskPlan、四类乘员权限、座舱状态、策略与执行回执。`/validation` 用三个页内标签承载 WebSocket 时序场景、SQLite 证据复盘和可靠性评测；`/project` 说明产品价值、真实边界与运行时能力注册表。旧地址只做兼容重定向，不再形成多个互相竞争的主页面。
+v0.7 的主演示统一位于 `/`：大地图作为工作画布，顶部只保留关键遥测，底部 Dock 收纳场景、温控、语音、媒体、车辆和路线入口；右侧主 Agent 承担统一交互。`/validation` 用三个页内标签承载 WebSocket 时序场景、SQLite 证据复盘和可靠性评测；`/project` 说明产品价值、真实边界与运行时能力注册表。旧地址只做兼容重定向，不再形成多个互相竞争的主页面。
 
 ```text
 用户请求
@@ -11,7 +11,7 @@ v0.6 的主演示统一位于 `/`：带大地图的智能座舱同时展示真�
   → 主 Agent / Orchestrator
   → Policy Kernel（TaskPlan allowlist + ABAC）
   → Navigation Domain Agent / Cabin Safety / Memory / System Service
-  → Pydantic + 25 个 VSS 信号 + 5 条声明式约束
+  → Pydantic + 41 个 VSS 信号 + 9 条声明式约束
   → Vehicle Sandbox / Nominatim / OSRM
   → SQLite Evidence Ledger + WebSocket Signal Stream + HMI
 ```

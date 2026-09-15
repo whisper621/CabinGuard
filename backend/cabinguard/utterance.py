@@ -73,6 +73,7 @@ def cabin_device_clarification(text: str) -> str | None:
     window_action = "车窗" in text and bool(
         re.search(r"打开|开启|开到|调到|关闭|关上|关掉", text)
     )
+    door_action = bool(re.search(r"打开车门|开启车门|关闭车门|关上车门|开门|关门", text))
 
     if seat_action:
         seat_parts: list[str] = []
@@ -91,6 +92,9 @@ def cabin_device_clarification(text: str) -> str | None:
             window_parts.append("开度（如 20%、一半或关闭）")
         if window_parts:
             missing.append("车窗的" + "和".join(window_parts))
+
+    if door_action and not _has_window_zone(text):
+        missing.append("目标车门（主驾/副驾/左后/右后）")
 
     if not missing:
         return None
@@ -199,7 +203,7 @@ def deterministic_cabin_tool_inputs(
 ) -> list[tuple[str, dict[str, object]]]:
     """Parse routine device-on actions into bounded deterministic tool inputs."""
 
-    if re.search(r"全部车窗|所有车窗|全车车窗|全部座椅|所有座椅|全车座椅", text):
+    if re.search(r"全部座椅|所有座椅|全车座椅", text):
         return []
     zone = _tool_zone(text, occupant_role)
     calls: list[tuple[str, dict[str, object]]] = []
@@ -209,7 +213,7 @@ def deterministic_cabin_tool_inputs(
                 "control_cabin_device",
                 {
                     "device": "window",
-                    "zone": zone,
+                    "zone": "all" if re.search(r"全部车窗|所有车窗|全车车窗", text) else zone,
                     "action": "set_position",
                     "value": _window_position(text, speed_kmh),
                 },
@@ -276,6 +280,120 @@ def deterministic_cabin_tool_inputs(
             if brightness:
                 light_input["value"] = min(100, int(brightness.group(1) or brightness.group(2)))
         calls.append(("control_cabin_device", light_input))
+    if re.search(r"除霜|除雾", text) and not re.search(r"后视镜", text):
+        if re.search(r"后挡|后风挡", text):
+            defrost_zone = "rear"
+        elif re.search(r"前后|全部|所有", text):
+            defrost_zone = "all"
+        else:
+            defrost_zone = "front"
+        calls.append(
+            (
+                "control_cabin_device",
+                {
+                    "device": "defrost",
+                    "zone": defrost_zone,
+                    "action": "turn_off" if re.search(r"关闭|关掉", text) else "turn_on",
+                },
+            )
+        )
+    return calls
+
+
+def _media_query(text: str) -> str:
+    match = re.search(
+        r"(?:播放|放点|放首|放一首|来点|来首|来一首|听)(.+?)(?=并且|然后|同时|顺便|再导航|，|。|；|$)",
+        text,
+    )
+    query = (match.group(1) if match else "").strip(" 一下点首的")
+    query = re.sub(r"(?:音乐|歌曲)$", "", query).strip()
+    return query or "轻音乐"
+
+
+def deterministic_extended_tool_inputs(text: str) -> list[tuple[str, dict[str, object]]]:
+    """Parse high-value media/body commands so demonstrations do not depend on model phrasing."""
+
+    calls: list[tuple[str, dict[str, object]]] = []
+    media_state_query = bool(
+        re.search(r"(?:正在|现在|当前).*(?:播放|听).*(?:什么|哪首)|这是什么歌|歌名", text)
+    )
+    if re.search(r"打开车门|开启车门|开门|关闭车门|关上车门|关门", text) and _has_window_zone(text):
+        calls.append(
+            (
+                "control_door",
+                {
+                    "door": _tool_zone(text, "driver"),
+                    "action": "close" if re.search(r"关闭|关上|关门", text) else "open",
+                    "confirmed": False,
+                },
+            )
+        )
+    if re.search(r"雨刷|雨刮", text):
+        if re.search(r"关闭|关掉|停止", text):
+            mode = "off"
+        elif re.search(r"暴雨|大雨|高速|最大", text):
+            mode = "high"
+        elif re.search(r"中速|中档|中挡", text):
+            mode = "medium"
+        elif re.search(r"低速|慢速|低档|低挡", text):
+            mode = "slow"
+        else:
+            mode = "auto"
+        calls.append(("control_wiper", {"mode": mode}))
+    if "后视镜" in text:
+        mirror_input: dict[str, object] = {"side": "both"}
+        if re.search(r"加热|除雾|看不清", text):
+            mirror_input["heating"] = not bool(re.search(r"关闭|关掉", text))
+        if re.search(r"折叠|收起", text):
+            mirror_input["folded"] = True
+        elif re.search(r"展开|打开", text):
+            mirror_input["folded"] = False
+        if len(mirror_input) > 1:
+            calls.append(("control_mirror", mirror_input))
+    if re.search(r"空气净化|净化器|空气不好|异味|味儿|PM2\.5|香氛", text):
+        air_input: dict[str, object] = {}
+        if re.search(r"空气净化|净化器|空气不好|异味|味儿|PM2\.5", text):
+            disabled = bool(re.search(r"关闭(?:空气净化|净化器)|关掉(?:空气净化|净化器)", text))
+            air_input["purifier_enabled"] = not disabled
+            if not disabled:
+                level = re.search(
+                    r"(?:净化(?:器)?.{0,6}([0-3一二三])\s*(?:档|挡)|"
+                    r"([0-3一二三])\s*(?:档|挡).{0,4}净化(?:器)?)",
+                    text,
+                )
+                mapping = {"一": 1, "二": 2, "三": 3}
+                raw = next((group for group in level.groups() if group), "2") if level else "2"
+                air_input["purifier_level"] = mapping.get(raw, int(raw) if raw.isdigit() else 2)
+        if "香氛" in text:
+            fragrance = "off" if re.search(r"关闭|关掉", text) else next(
+                (value for label, value in {"森林": "forest", "海洋": "ocean", "柑橘": "citrus"}.items() if label in text),
+                "forest",
+            )
+            air_input["fragrance"] = fragrance
+        calls.append(("control_air_quality", air_input))
+    if "儿童锁" in text:
+        calls.append(("control_child_lock", {"enabled": not bool(re.search(r"关闭|关掉", text))}))
+    if re.search(r"充电口|充电盖", text):
+        calls.append(
+            (
+                "control_charge_port",
+                {"action": "close" if re.search(r"关闭|关上|关掉", text) else "open"},
+            )
+        )
+    if media_state_query:
+        calls.append(("get_media_state", {}))
+    elif re.search(r"下一首|切歌", text):
+        calls.append(("control_media", {"action": "next"}))
+    elif "上一首" in text:
+        calls.append(("control_media", {"action": "previous"}))
+    elif re.search(r"暂停(?:音乐|播放)?", text):
+        calls.append(("control_media", {"action": "pause"}))
+    elif re.search(r"停止(?:音乐|播放)?|关闭音乐", text):
+        calls.append(("control_media", {"action": "stop"}))
+    elif match := re.search(r"音量.{0,5}?(\d{1,3})", text):
+        calls.append(("control_media", {"action": "set_volume", "value": min(100, int(match.group(1)))}))
+    elif re.search(r"播放|放点|放首|放一首|来点|来首|来一首|听.*(?:歌|音乐)", text):
+        calls.append(("play_media", {"query": _media_query(text), "limit": 6}))
     return calls
 
 

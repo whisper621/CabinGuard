@@ -39,7 +39,7 @@ class TaskPlan(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     id: str
-    version: str = "6.0.0"
+    version: str = "7.0.0"
     objective: str
     nodes: list[TaskNode]
     execution_waves: list[list[str]] = Field(alias="executionWaves")
@@ -136,13 +136,24 @@ def compile_task_plan(text: str) -> TaskPlan:
     climate_ambiguous = climate and _has(text, r"舒服一点|调(?:低|高)一点|有点冷|有点热|太冷|太热") and not _has(
         text, r"\d{2}\s*(?:度|℃)|内循环|外循环|风量\s*\d"
     )
-    cabin_device = _has(text, r"车窗|座椅|氛围灯|除霜|除雾") and not _has(text, r"按摩")
+    cabin_device = _has(text, r"车窗|座椅|氛围灯|除霜|前挡|后挡") and not _has(text, r"按摩")
     sunroof = _has(text, r"天窗|遮阳帘")
     sunroof_ambiguous = sunroof and _has(text, r"打开|开启") and not _has(
         text, r"\d+\s*%|\d+\s*(?:成|百分比)|一半|全开|完全打开"
     )
     trunk = _has(text, r"后备箱|尾门")
-    trunk_status_query = trunk and _has(text, r"打开了吗|关闭了吗|是否|状态|现在.*(?:开|关)")
+    trunk_status_query = trunk and _has(
+        text, r"打开了吗|关闭了吗|是否|状态|现在.*(?:开着|关着|开启状态|关闭状态)"
+    )
+    door = _has(text, r"车门|开门|关门") and not trunk
+    wiper = _has(text, r"雨刷|雨刮")
+    mirror = _has(text, r"后视镜")
+    air_quality = _has(text, r"空气净化|净化器|香氛|空气不好|味儿|异味|PM2\.5")
+    child_lock = _has(text, r"儿童锁")
+    charge_port = _has(text, r"充电口|充电盖")
+    media = _has(text, r"音乐|歌曲|歌|播放|暂停|下一首|上一首|音量|静音")
+    media_query = media and _has(text, r"(?:正在|现在|当前).*(?:播放|听).*(?:什么|哪首)|这是什么歌|歌名")
+    media_control = media and _has(text, r"暂停|停止|下一首|上一首|音量|静音|继续")
     weather = _has(text, r"天气|下雨|降雨")
     vehicle_status = _has(text, r"车速|电量|续航|车况|当前位置|我在哪|状态")
     vehicle_status = vehicle_status or trunk_status_query
@@ -160,7 +171,20 @@ def compile_task_plan(text: str) -> TaskPlan:
         nodes.append(node)
         return node
 
-    if vehicle_status or navigation or charging or cabin_device or sunroof or trunk:
+    if (
+        vehicle_status
+        or navigation
+        or charging
+        or cabin_device
+        or sunroof
+        or trunk
+        or door
+        or wiper
+        or mirror
+        or air_quality
+        or child_lock
+        or charge_port
+    ):
         add(
             "system",
             "读取可信车辆上下文",
@@ -211,6 +235,17 @@ def compile_task_plan(text: str) -> TaskPlan:
             risk="medium",
             permission="cabin:write",
         )
+    if air_quality:
+        dependency = next((node.id for node in nodes if "get_vehicle_state" in node.allowed_tools), None)
+        add(
+            "comfort",
+            "改善座舱空气",
+            "控制空气净化器、净化挡位或香氛，并回写座舱状态。",
+            ["control_air_quality"],
+            dependencies=[dependency] if dependency else [],
+            risk="medium",
+            permission="cabin:write",
+        )
     if sunroof and sunroof_ambiguous:
         add(
             "body_safety",
@@ -242,6 +277,61 @@ def compile_task_plan(text: str) -> TaskPlan:
             "执行后备箱控制",
             "服务端确认挡位和车速后执行尾门动作。",
             ["control_trunk"],
+            dependencies=[dependency] if dependency else [],
+            risk="high",
+            permission="body:write",
+        )
+    if door:
+        dependency = next((node.id for node in nodes if "get_vehicle_state" in node.allowed_tools), None)
+        add(
+            "body_safety",
+            "执行车门安全控制",
+            "确认目标车门，校验车速、挡位与儿童锁，并要求一次性确认。",
+            ["control_door"],
+            dependencies=[dependency] if dependency else [],
+            risk="high",
+            permission="body:write:confirm",
+        )
+    if wiper:
+        dependency = next((node.id for node in nodes if "get_vehicle_state" in node.allowed_tools), None)
+        add(
+            "body_safety",
+            "调节雨刷",
+            "依据用户要求设置自动、低速、中速、高速或关闭。",
+            ["control_wiper"],
+            dependencies=[dependency] if dependency else [],
+            risk="medium",
+            permission="body:write",
+        )
+    if mirror:
+        dependency = next((node.id for node in nodes if "get_vehicle_state" in node.allowed_tools), None)
+        add(
+            "body_safety",
+            "调节后视镜",
+            "控制两侧后视镜折叠或镜面加热。",
+            ["control_mirror"],
+            dependencies=[dependency] if dependency else [],
+            risk="medium",
+            permission="body:write",
+        )
+    if child_lock:
+        dependency = next((node.id for node in nodes if "get_vehicle_state" in node.allowed_tools), None)
+        add(
+            "body_safety",
+            "设置儿童锁",
+            "由驾驶员控制后排儿童锁并记录状态变化。",
+            ["control_child_lock"],
+            dependencies=[dependency] if dependency else [],
+            risk="high",
+            permission="body:write",
+        )
+    if charge_port:
+        dependency = next((node.id for node in nodes if "get_vehicle_state" in node.allowed_tools), None)
+        add(
+            "body_safety",
+            "控制充电口",
+            "校验驻车条件后开关充电口盖。",
+            ["control_charge_port"],
             dependencies=[dependency] if dependency else [],
             risk="high",
             permission="body:write",
@@ -298,6 +388,23 @@ def compile_task_plan(text: str) -> TaskPlan:
             memory_tools or ["manage_preferences"],
             risk="medium" if _has(text, r"记住|忘记|删除") else "low",
             permission="session-memory:read-write",
+        )
+    if media:
+        tools: list[str] = []
+        if media_query:
+            tools.append("get_media_state")
+        if not media_query and not media_control:
+            tools.append("play_media")
+        if media_control:
+            tools.append("control_media")
+        add(
+            "media",
+            "执行媒体任务",
+            "联网加载可核验的音乐试听内容，或控制当前播放队列。",
+            tools,
+            risk="low",
+            permission="media:write",
+            parallelizable=bool(navigation or climate or cabin_device),
         )
     if capabilities:
         add(

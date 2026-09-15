@@ -92,6 +92,7 @@ export const domainLabels: Record<string, string> = {
   navigation: "导航领域",
   comfort: "舒适控制",
   body_safety: "车身安全",
+  media: "媒体娱乐",
   memory: "会话记忆",
 };
 

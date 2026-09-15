@@ -14,8 +14,9 @@
 | `cabinguard/event_store.py` | SQLite 追加式计划、策略、工具与信号证据账本 |
 | `cabinguard/signal_player.py` | 高速、驻车、降雨、低电量等 VSS 时序事件 |
 | `cabinguard/evaluation_v6.py` | 24 个组合场景的确定性契约评分 |
+| `cabinguard/scenario_matrix_v7.py` | 200 条场景、组合任务、口语变体与 ABAC 契约评分 |
 | `cabinguard/tools.py` | 14 个 Pydantic 工具 Schema、前置条件和动作执行 |
-| `cabinguard/signals.py` | 25 个 VSS 对齐信号、分段 glob 和 5 条声明式安全约束 |
+| `cabinguard/signals.py` | 41 个 VSS 对齐信号、分段 glob 和 9 条声明式安全约束 |
 | `cabinguard/capabilities.py` | 由真实注册表生成工具、信号、约束、集成与执行图清单 |
 | `cabinguard/memory.py` | 明确授权的会话偏好与成功导航行程回执 |
 | `cabinguard/navigation.py` | Nominatim 地点检索、OSRM 道路算路、缓存限流和坐标隔离 |
@@ -75,5 +76,6 @@ python -m ruff check backend
 - `GET /api/evaluation/cases`：读取 15 个版本化共享任务。
 - `POST /api/evaluation/score`：用 Python 确定性评分器检查一条多轮轨迹。
 - `GET /api/evaluation/composite-summary`：运行并汇总 24 个 v0.6 组合契约。
+- `GET /api/evaluation/scenario-matrix-summary`：运行并汇总 200 个 v0.7 场景矩阵契约。
 
 该后端使用模拟车况和内存会话验证 Agent 策略；SQLite 只持久化演示证据，不代表账号或车辆身份系统。不可直接连接真实车控执行端。

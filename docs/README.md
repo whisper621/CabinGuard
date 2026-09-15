@@ -24,6 +24,7 @@
 | [混合多 Agent 演进决策](MULTI_AGENT_EVOLUTION_PLAN.md) | 单 Agent 是否足够、拆分阈值、15 个候选方向、Top 5 和四周路线 | AI 产品、座舱、具身、面试官 |
 | [v0.6 可信出行协同升级方案](V06_TRUSTED_CABIN_COPILOT_PLAN.md) | 产品战略、可信任务图、VSS 数字孪生、分域委托、中文 HMI、结果路线图与 DoD | AI 产品、座舱、具身、研发、面试官 |
 | [v0.6 实施与评测报告](V06_IMPLEMENTATION_REPORT.md) | 已落地代码、组合评测、意图/实现差距、产品边界和面试讲法 | AI 产品、座舱、具身、研发、面试官 |
+| [v0.7 场景与 HMI 升级报告](V07_SCENARIO_HMI_UPGRADE.md) | 8 组可执行场景、地图优先布局、媒体/车身能力、安全设计与真实边界 | AI 产品、座舱、具身、研发、面试官 |
 
 ## 评测与证据
 

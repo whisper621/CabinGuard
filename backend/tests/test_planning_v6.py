@@ -33,3 +33,23 @@ def test_all_composite_contract_cases_pass() -> None:
     failures = {score.case_id: score.findings for score in scores if not score.passed}
     assert failures == {}
     assert len(scores) == 24
+
+
+def test_compiles_new_cockpit_domains_into_one_multi_task_plan() -> None:
+    plan = compile_task_plan(
+        "嗯，打开自动雨刷和后视镜加热，开启空气净化，然后播放轻音乐"
+    )
+    tools = set(plan.allowed_tools)
+    assert {
+        "control_wiper",
+        "control_mirror",
+        "control_air_quality",
+        "play_media",
+    } <= tools
+    assert {node.domain for node in plan.nodes} >= {"body_safety", "comfort", "media"}
+
+
+def test_current_song_query_is_read_only() -> None:
+    plan = compile_task_plan("现在播放的是什么歌？")
+    assert "get_media_state" in plan.allowed_tools
+    assert "play_media" not in plan.allowed_tools

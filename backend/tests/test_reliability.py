@@ -58,7 +58,7 @@ def climate_success_step() -> TrajectoryStep:
 
 def test_suite_has_three_balanced_task_types() -> None:
     suite = load_suite()
-    assert suite.version == "3.0.0"
+    assert suite.version == "3.1.0"
     assert len(suite.cases) == 15
     assert Counter(item.task_type for item in suite.cases) == {
         "base": 5,

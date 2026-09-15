@@ -22,13 +22,20 @@ class PendingSunroofAction:
 
 
 @dataclass
+class PendingDoorAction:
+    door: str
+    action: str
+    expires_at: float
+
+
+@dataclass
 class CabinSession:
     id: str
     scenario: Scenario
     vehicle: VehicleState
     created_at: float
     expires_at: float
-    pending_action: PendingSunroofAction | None = None
+    pending_action: PendingSunroofAction | PendingDoorAction | None = None
     place_candidates: dict[str, dict[str, object]] = field(default_factory=dict)
     preferences: dict[str, str] = field(default_factory=dict)
     trip_history: list[dict[str, object]] = field(default_factory=list)
@@ -69,6 +76,34 @@ def build_scenario(
         )
     if scenario == "moving":
         return vehicle.model_copy(update={"speed": 35, "gear": "D"})
+    if scenario == "highway":
+        return vehicle.model_copy(update={"speed": 110, "gear": "D", "battery": 58, "range": 328})
+    if scenario == "low_battery":
+        return vehicle.model_copy(update={"speed": 35, "gear": "D", "battery": 12, "range": 48})
+    if scenario == "child":
+        return vehicle.model_copy(update={"speed": 0, "gear": "P", "child_lock": True})
+    if scenario == "pickup":
+        return vehicle.model_copy(update={"speed": 0, "gear": "P"})
+    if scenario == "rest":
+        return vehicle.model_copy(
+            update={
+                "speed": 0,
+                "gear": "P",
+                "target_temperature": 22,
+                "ambient_light": vehicle.ambient_light.model_copy(
+                    update={"enabled": True, "color": "violet", "brightness": 35}
+                ),
+            }
+        )
+    if scenario == "air_quality":
+        return vehicle.model_copy(
+            update={
+                "speed": 20,
+                "gear": "D",
+                "weather": "轻度污染",
+                "air_quality": vehicle.air_quality.model_copy(update={"pm25": 168}),
+            }
+        )
     return vehicle
 
 
@@ -190,6 +225,28 @@ class SessionStore:
     def take_sunroof_confirmation(self, session: CabinSession) -> PendingSunroofAction | None:
         with self._lock:
             pending = session.pending_action
+            if pending is not None and not isinstance(pending, PendingSunroofAction):
+                return None
+            session.pending_action = None
+            self._sessions[session.id] = session
+            if pending is None or pending.expires_at <= time.time():
+                return None
+            return pending
+
+    def create_door_confirmation(self, session: CabinSession, door: str, action: str) -> None:
+        with self._lock:
+            session.pending_action = PendingDoorAction(
+                door=door,
+                action=action,
+                expires_at=time.time() + CONFIRMATION_TTL_SECONDS,
+            )
+            self._sessions[session.id] = session
+
+    def take_door_confirmation(self, session: CabinSession) -> PendingDoorAction | None:
+        with self._lock:
+            pending = session.pending_action
+            if pending is not None and not isinstance(pending, PendingDoorAction):
+                return None
             session.pending_action = None
             self._sessions[session.id] = session
             if pending is None or pending.expires_at <= time.time():

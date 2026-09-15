@@ -300,7 +300,7 @@ export default function EvaluationLab() {
   const [composite, setComposite] = useState<CompositeSummary | null>(null);
 
   useEffect(() => {
-    fetch(cabinApiUrl("/api/evaluation/composite-summary"))
+    fetch(cabinApiUrl("/api/evaluation/scenario-matrix-summary"))
       .then((response) => response.ok ? response.json() as Promise<CompositeSummary> : null)
       .then((value) => setComposite(value))
       .catch(() => setComposite(null));
@@ -420,7 +420,7 @@ export default function EvaluationLab() {
       project: "CabinGuard",
       suite: suite.suite,
       suiteVersion: suite.version,
-      reportVersion: "3.0.0",
+      reportVersion: "3.1.0",
       generatedAt: new Date().toISOString(),
       selection: { taskType, trials: trialCount },
       summary,
@@ -439,7 +439,7 @@ export default function EvaluationLab() {
     <div className="bg-[#050b16] text-slate-100">
       <section className="mx-auto max-w-7xl px-5 py-6">
         <div className="mb-5 rounded-[30px] border border-violet-400/20 bg-[linear-gradient(120deg,#10142a,#091b2c)] p-6 shadow-2xl shadow-black/20">
-          <div className="flex flex-wrap items-center justify-between gap-4"><div><p className="text-xs font-semibold tracking-[0.16em] text-violet-300">RELIABILITY EVALUATION / 可靠性评测</p><h2 className="mt-3 text-2xl font-semibold">任务图 × 乘员权限 × 越权隔离</h2><p className="mt-3 max-w-3xl text-sm leading-7 text-slate-400">24 条零模型成本确定性用例验证领域召回、工具白名单、DAG 节点数与 ABAC 决策；下方 15 条模型轨迹评测验证真实对话表现，避免用一次成功代表稳定可靠。</p></div><div className="grid min-w-56 grid-cols-3 gap-2 text-center"><div className="rounded-xl border border-white/[0.07] bg-white/[0.05] p-3"><p className="text-2xl font-semibold text-violet-300">{composite?.caseCount ?? 24}</p><p className="text-[10px] text-slate-500">场景数</p></div><div className="rounded-xl border border-white/[0.07] bg-white/[0.05] p-3"><p className="text-2xl font-semibold text-emerald-300">{composite?.passed ?? "—"}</p><p className="text-[10px] text-slate-500">已通过</p></div><div className="rounded-xl border border-white/[0.07] bg-white/[0.05] p-3"><p className="text-2xl font-semibold text-cyan-300">{composite ? `${Math.round(composite.passRate * 100)}%` : "—"}</p><p className="text-[10px] text-slate-500">契约通过率</p></div></div></div>
+          <div className="flex flex-wrap items-center justify-between gap-4"><div><p className="text-xs font-semibold tracking-[0.16em] text-violet-300">RELIABILITY EVALUATION / 可靠性评测</p><h2 className="mt-3 text-2xl font-semibold">200 条场景矩阵 × 乘员权限 × 越权隔离</h2><p className="mt-3 max-w-3xl text-sm leading-7 text-slate-400">覆盖 8 个座舱场景、25 种单域/跨域任务与 8 种中文口语表面形式；每条均验证场景会话、领域召回、工具白名单、禁止工具和 ABAC 决策。下方 15 条模型轨迹评测继续观察真实模型表现。</p></div><div className="grid min-w-56 grid-cols-3 gap-2 text-center"><div className="rounded-xl border border-white/[0.07] bg-white/[0.05] p-3"><p className="text-2xl font-semibold text-violet-300">{composite?.caseCount ?? "—"}</p><p className="text-[10px] text-slate-500">场景用例</p></div><div className="rounded-xl border border-white/[0.07] bg-white/[0.05] p-3"><p className="text-2xl font-semibold text-emerald-300">{composite?.passed ?? "—"}</p><p className="text-[10px] text-slate-500">已通过</p></div><div className="rounded-xl border border-white/[0.07] bg-white/[0.05] p-3"><p className="text-2xl font-semibold text-cyan-300">{composite ? `${Math.round(composite.passRate * 100)}%` : "—"}</p><p className="text-[10px] text-slate-500">契约通过率</p></div></div></div>
         </div>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <MetricCard label="试次通过率" value={`${summary.trialRate}%`} hint={`${summary.passedTrials}/${results.length || totalTrials} 个试次`} />

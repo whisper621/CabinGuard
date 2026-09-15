@@ -18,7 +18,7 @@ export default function V6Nav({ active }: { active?: string }) {
           <span className="grid h-10 w-10 place-items-center rounded-2xl bg-gradient-to-br from-cyan-300 via-blue-500 to-violet-500 font-black text-[#06101d] shadow-lg shadow-blue-500/20">CG</span>
           <span>
             <strong className="block text-sm tracking-wide text-white">{zhCN.product}</strong>
-            <span className="text-[11px] tracking-[0.16em] text-slate-500">TRUSTED MOBILITY COPILOT · v0.6</span>
+            <span className="text-[11px] tracking-[0.16em] text-slate-500">TRUSTED MOBILITY COPILOT · v0.7</span>
           </span>
         </Link>
         <nav className="flex max-w-full gap-1 overflow-x-auto rounded-2xl border border-white/[0.07] bg-white/[0.035] p-1 text-xs">

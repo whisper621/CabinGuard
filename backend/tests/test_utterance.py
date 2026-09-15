@@ -1,6 +1,7 @@
 from cabinguard.utterance import (
     cabin_device_clarification,
     deterministic_cabin_tool_inputs,
+    deterministic_extended_tool_inputs,
     navigation_query,
     normalize_user_utterance,
     resolve_cabin_device_defaults,
@@ -60,3 +61,16 @@ def test_builds_deterministic_device_batch_and_navigation_query() -> None:
     assert calls[2][1]["action"] == "ventilate"
     assert calls[3][1]["color"] == "violet"
     assert navigation_query(text) == "天津师范大学"
+
+
+def test_current_song_query_does_not_start_new_playback() -> None:
+    assert deterministic_extended_tool_inputs("现在播放的是什么歌？") == [
+        ("get_media_state", {})
+    ]
+
+
+def test_parses_purifier_level_before_or_after_device_name() -> None:
+    before = deterministic_extended_tool_inputs("打开3挡净化器")
+    after = deterministic_extended_tool_inputs("打开净化器三挡")
+    assert before == [("control_air_quality", {"purifier_enabled": True, "purifier_level": 3})]
+    assert after == before

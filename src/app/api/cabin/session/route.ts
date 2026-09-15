@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
 
   if (!isCabinScenario(scenario)) {
     return NextResponse.json(
-      { error: { code: "invalid_scenario", message: "scenario must be default, rain, or moving" } },
+      { error: { code: "invalid_scenario", message: "scenario must be one of the supported cockpit scenarios" } },
       { status: 400 },
     );
   }

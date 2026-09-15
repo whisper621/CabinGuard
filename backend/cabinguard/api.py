@@ -19,6 +19,7 @@ from .evaluation_v6 import load_composite_suite, score_composite_case, suite_sum
 from .planning import compile_task_plan
 from .policy_kernel import OccupantRole
 from .reliability import TrajectoryStep, evaluate_trial, load_suite
+from .scenario_matrix_v7 import scenario_matrix_summary
 from .session import SESSION_TTL_SECONDS, SessionStore
 from .signal_player import EVENT_LABELS, SignalEventName, apply_signal_event
 from .utterance import normalize_user_utterance
@@ -37,7 +38,17 @@ class BrowserLocation(BaseModel):
 
 class SessionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    scenario: Literal["default", "rain", "moving"] = "default"
+    scenario: Literal[
+        "default",
+        "rain",
+        "moving",
+        "highway",
+        "low_battery",
+        "child",
+        "pickup",
+        "rest",
+        "air_quality",
+    ] = "default"
     location: BrowserLocation | None = None
     occupant_role: OccupantRole = Field("driver", alias="occupantRole")
 
@@ -398,6 +409,11 @@ async def composite_evaluation_cases() -> dict[str, object]:
 @app.get("/api/evaluation/composite-summary")
 async def composite_evaluation_summary() -> dict[str, object]:
     return suite_summary()
+
+
+@app.get("/api/evaluation/scenario-matrix-summary")
+async def scenario_matrix_evaluation_summary() -> dict[str, object]:
+    return scenario_matrix_summary()
 
 
 @app.get("/api/evaluation/composite-score/{case_id}")

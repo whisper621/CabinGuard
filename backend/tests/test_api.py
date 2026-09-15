@@ -18,13 +18,13 @@ def test_capability_manifest_is_derived_from_runtime_registries() -> None:
     response = client.get("/api/cabin/capabilities")
     assert response.status_code == 200
     payload = response.json()
-    assert payload["agentCount"] == 2
-    assert payload["toolCount"] == len(payload["tools"]) == 14
-    assert payload["signalCount"] == len(payload["signals"]) == 25
-    assert payload["constraintCount"] == len(payload["constraints"]) == 5
+    assert payload["agentCount"] == 3
+    assert payload["toolCount"] == len(payload["tools"]) == 23
+    assert payload["signalCount"] == len(payload["signals"]) == 41
+    assert payload["constraintCount"] == len(payload["constraints"]) == 9
     assert any(tool["name"] == "control_cabin_device" for tool in payload["tools"])
     assert payload["agentArchitecture"]["orchestrator"] == 1
-    assert len(payload["domains"]) == 5
+    assert len(payload["domains"]) == 6
 
 
 def test_creates_rain_session_with_frontend_shape() -> None:
@@ -94,9 +94,28 @@ def test_previews_task_plan_without_model_call() -> None:
     response = client.post("/api/cabin/plan", json={"text": "空调调到22度并导航去故宫"})
     assert response.status_code == 200
     payload = response.json()
-    assert payload["version"] == "6.0.0"
+    assert payload["version"] == "7.0.0"
     assert "set_climate" in payload["allowedTools"]
     assert "plan_navigation" in payload["allowedTools"]
+
+
+def test_v7_scenario_matrix_endpoint_reports_200_passes() -> None:
+    response = client.get("/api/evaluation/scenario-matrix-summary")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["version"] == "7.0.0"
+    assert payload["caseCount"] == payload["passed"] == 200
+    assert payload["passRate"] == 1.0
+    assert set(payload["scenarioCounts"]) == {
+        "default",
+        "rain",
+        "highway",
+        "low_battery",
+        "child",
+        "pickup",
+        "rest",
+        "air_quality",
+    }
 
 
 def test_signal_event_updates_state_version_and_evidence() -> None:
@@ -191,7 +210,7 @@ def test_lists_versioned_reliability_cases() -> None:
     response = client.get("/api/evaluation/cases")
     assert response.status_code == 200
     payload = response.json()
-    assert payload["version"] == "3.0.0"
+    assert payload["version"] == "3.1.0"
     assert len(payload["cases"]) == 15
 
 

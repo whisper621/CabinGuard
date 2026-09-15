@@ -11,7 +11,7 @@
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)
 ![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-Agent%20API-009688?logo=fastapi&logoColor=white)
-![Tests](https://img.shields.io/badge/Tests-146%20passed-6E9F18)
+![Tests](https://img.shields.io/badge/Tests-364%20passed-6E9F18)
 ![License](https://img.shields.io/badge/License-MIT-blue.svg)
 
 **[智能座舱](http://localhost:3000/) · [验证中心](http://localhost:3000/validation) · [项目说明](http://localhost:3000/project) · [系统架构](#可信架构) · [评测体系](#量化验证) · [项目文档](#项目文档)**
@@ -28,20 +28,20 @@ CabinGuard 解决的不是“车载助手能否聊天”，而是“它能否在
 
 | 维度 | 项目成果 |
 | --- | --- |
-| 产品场景 | 空调、天窗、车窗、座椅、氛围灯、除霜、真实道路导航、补能、后备箱、会话记忆 |
-| Agent 能力 | 主 Agent 编排、导航领域隔离、多轮 Tool Calling、口语填充词归一化、组合任务、集中补参、风险确认、偏好/行程回忆 |
-| 可信机制 | TaskPlan 工具白名单、四类乘员 ABAC、25 个 VSS 对齐信号、5 条声明式约束、结果依据校验 |
+| 产品场景 | 真实道路导航、音乐试听、空调、空气净化、天窗、四门四窗、座椅、雨刷、后视镜、灯光、除霜、儿童锁、充电口、补能与记忆 |
+| Agent 能力 | 主 Agent 编排、导航/媒体领域隔离、多轮 Tool Calling、口语归一化、跨域组合任务、集中补参、风险确认、偏好/行程回忆 |
+| 可信机制 | TaskPlan 工具白名单、四类乘员 ABAC、41 个 VSS 对齐信号、9 条声明式约束、结果依据校验 |
 | 可观测性 | SQLite 因果证据账本、状态版本、WebSocket 信号流、任务节点、策略裁决与工具回执 |
-| 评测资产 | 24 个组合任务契约 + 15 个模型可靠性任务、103 条 Python 测试、43 条 TypeScript 测试 |
-| 作品集资产 | 地图优先的智能座舱、三合一验证中心、运行时项目说明、PRD 与决策记录 |
+| 评测资产 | 200 条 v0.7 场景矩阵 + 24 个基础组合契约 + 15 个模型可靠性任务、321 条 Python 测试、43 条 TypeScript 测试 |
+| 作品集资产 | 地图优先工作台、8 组场景、三合一验证中心、运行时项目说明、PRD 与决策记录 |
 
-> 项目定位：一个主编排 Agent + 一个导航领域 Agent + 四个确定性服务的可信座舱协同系统。当前使用车辆与环境模拟数据验证产品策略，不连接真实车辆控制器。
+> 项目定位：一个主编排 Agent + 导航/媒体两个领域 Agent + 五个确定性服务的可信座舱协同系统。地点、道路路线与音乐试听真实联网；车辆执行使用安全沙箱，不连接真实车辆控制器。
 
 ## 项目里到底有几个 Agent
 
-当前主链路有 **2 个 Agent 边界**：Python `AgentService` 是面向用户的主编排 Agent；导航领域通过独立 Manifest、工具白名单、权限范围和外部服务执行器形成 `NavigationDomainAgent`。舒适、车身安全、记忆和系统感知仍是确定性服务，因为它们更需要低延迟、可审计执行，而不是额外的大模型推理。
+当前主链路有 **3 个 Agent 边界**：Python `AgentService` 是面向用户的主编排 Agent；导航与媒体领域分别通过独立 Manifest、工具白名单、权限范围和外部服务执行器形成领域边界。舒适、车身安全、记忆、感知和策略仍是确定性服务，因为它们更需要低延迟、可审计执行，而不是额外的大模型推理。
 
-“2 个 Agent”不代表运行两个基础大模型。当前仍由同一个 DeepSeek 客户端完成自然语言推理，领域 Agent 表示可独立版本化、隔离上下文与权限的推理/执行边界；未来只有当导航需要独立上下文、SLA 或团队维护时才拆为独立模型调用。14 个工具也绝不包装成 14 个 Agent。
+“3 个 Agent”不代表运行三个基础大模型。当前仍由同一个 DeepSeek 客户端完成自然语言推理，领域 Agent 表示可独立版本化、隔离上下文与权限的推理/执行边界；未来只有当领域需要独立上下文、SLA 或团队维护时才拆为独立模型调用。23 个工具也绝不包装成 23 个 Agent。
 
 仓库保留早期 `cabinPilotAgent` 的 OpenAI Realtime 实验代码作为技术探索资产，但不再暴露为独立产品入口，也不计入当前 Agent 数量。这个取舍让项目重点落在任务完成、安全授权和可验证评测，而不是用名词制造复杂度。
 
@@ -49,7 +49,7 @@ CabinGuard 解决的不是“车载助手能否聊天”，而是“它能否在
 
 CabinGuard 现在采用产品型 Agent 常见的前后端分工，而不是为了“全 Python”牺牲交互体验：
 
-- **Python 是 Agent 主后端：** FastAPI 接口、语音文本归一化、TaskPlan 编译、乘员/设备/座位 ABAC、证据账本、WebSocket 信号流、多轮模型编排、Pydantic 工具、真实地点/道路适配、VSS 约束、会话记忆、组合评测器和 103 条测试均在 `backend/`。
+- **Python 是 Agent 主后端：** FastAPI 接口、语音文本归一化、TaskPlan 编译、乘员/设备/座位 ABAC、证据账本、WebSocket 信号流、多轮模型编排、Pydantic 工具、真实地点/道路/音乐适配、VSS 约束、会话记忆、组合评测器和 321 条测试均在 `backend/`。
 - **TypeScript/TSX 是产品界面：** Next.js、React 页面、Agent Trace、评测台和浏览器语音交互在 `src/app/`。
 - **TypeScript 后端是兼容回退：** 未启动 Python API 时，界面仍可通过 Next.js Route Handlers 演示；正式讲述应以 Python Agent 主链路为核心。
 
@@ -98,11 +98,12 @@ CabinGuard 将任务拆为一条可检查的闭环：
 - 当前位置必须由用户点击授权。服务端记录 WGS84 坐标、位置来源、精度与外部算路同意状态，默认仍提供可复现的京承高速模拟起点；精确坐标不写入发给模型的工具回执。
 - 普通地址与 POI 由 OpenStreetMap Nominatim 按用户提交动作检索，道路距离、ETA、备选路线、关键步骤与 GeoJSON 折线由 OSRM 计算；默认配置具备两个公共 OSRM 端点的故障切换，路线过长时只折叠中间细分转向并始终保留到达步骤，页面明确区分模拟起点、联网算路和实时交通能力。
 - 公共服务是无 SLA 的作品集原型数据源，不含实时交通、封路、车道级引导或量产导航能力；提供者失败时系统返回明确阻断，不以模拟折线冒充真实结果。
+- 媒体领域通过 Apple iTunes Search API 与 Deezer API 双目录降级检索可核验曲目元数据和 30 秒试听地址；它不声称拥有整曲版权，也不把目录命中包装成车载媒体平台接入。
 
 ### 6. 能力清单与执行规则共用代码事实
 
-- 14 个工具、25 个 VSS 对齐信号和 5 条约束统一由 Python 注册表维护，`/api/cabin/capabilities` 动态生成 System Lab，不手工伪造功能数量。
-- 车窗高速限幅、儿童锁拒绝、P 挡后备箱、雨天天窗和低电量风量限制由声明式约束真正参与工具执行，并返回可机器处理的 `code`、`action` 和建议。
+- 23 个工具、41 个 VSS 对齐信号和 9 条约束统一由 Python 注册表维护，`/api/cabin/capabilities` 动态生成 System Lab，不手工伪造功能数量。
+- 车窗高速限幅、儿童锁拒绝、车门/充电口驻车限制、P 挡后备箱、雨天天窗和低电量风量限制由声明式约束真正参与工具执行，并返回可机器处理的 `code`、`action` 和建议。
 - 偏好与行程只保留在当前 30 分钟 Python 会话；浏览器对话档案单独保留最近 20 段文本，不是云端账号记忆。偏好写入/删除必须来自本轮用户明确要求，行程必须来自成功导航回执。
 
 ## 场景与安全策略
@@ -118,6 +119,10 @@ CabinGuard 将任务拆为一条可检查的闭环：
 | “打开座椅通风和紫色氛围灯” | 车辆与座舱状态 | 跨座椅/灯光域组合执行 | 区域、动作、挡位、颜色和亮度严格校验 |
 | “记住我喜欢 22℃” | 本轮明确记忆意图 | 写入会话偏好 | 不冒充账号级长期记忆；会话过期即清除 |
 | “打开后备箱” | 车速与挡位 | 驻车时开启 | 行驶中由工具层阻止 |
+| “打开右后车门” | 车速、挡位、儿童锁 | 驻车且二次确认后开启 | 行驶中、非 P 挡或儿童锁开启时拒绝 |
+| “打开雨刷和后视镜加热” | 当前车辆状态 | 两个确定性工具连续执行 | 严格设备与动作枚举 |
+| “空气不好，开启 3 挡净化” | PM2.5 与净化状态 | 开启净化器并写入挡位 | 空参数或越界挡位拒绝 |
+| “播放轻音乐” | 媒体状态与联网目录 | 加载真实曲目元数据和试听队列 | 服务失败或无试听资源时如实阻断 |
 | “调舒服一点” | 当前座舱状态 | 等待偏好明确后执行 | 关键条件不足时先澄清 |
 
 ## 可信架构
@@ -132,9 +137,10 @@ flowchart LR
     P -->|允许| EX[领域 Agent / 确定性服务]
     EX --> V[Pydantic 参数校验]
     V --> G[VSS 安全约束]
-    G --> VSS[25 个 VSS 对齐信号 / 5 条声明式约束]
+    G --> VSS[41 个 VSS 对齐信号 / 9 条声明式约束]
     VSS --> SIM[车辆 / 天气模拟器]
     G --> MAP[Nominatim / OSRM 地图适配器]
+    G --> MEDIA[Apple / Deezer 音乐目录降级适配器]
     G --> MEM[会话偏好 / 行程回执]
     G --> EVT[(SQLite 证据账本)]
     VSS --> WS[WebSocket 时序状态]
@@ -160,7 +166,7 @@ flowchart LR
 
 详细设计见 [架构说明](docs/ARCHITECTURE.md) 与 [权限边界](documentation/permissions.md)。
 
-## 十四个领域工具
+## 二十三个领域工具
 
 | 工具 | 职责 | 关键约束 |
 | --- | --- | --- |
@@ -174,7 +180,16 @@ flowchart LR
 | `plan_navigation` | 生成真实道路距离、ETA、步骤、备选路线与折线 | 先读车辆、先检索地点、候选 ID 绑定、外部算路同意 |
 | `control_sunroof` | 控制天窗与遮阳帘 | 降雨阻止，高速确认绑定会话与动作 |
 | `control_trunk` | 开关后备箱 | 行驶中禁止开启 |
+| `control_door` | 开关四个车门 | 开启前先读状态；驻车限制、儿童锁和一次性确认 |
+| `control_wiper` | 设置自动/低速/中速/高速雨刷 | 严格枚举，不由模型直接写状态 |
+| `control_mirror` | 折叠或加热左右后视镜 | 至少提供一种明确动作 |
+| `control_air_quality` | 控制净化器挡位与三种香氛 | 空参数和越界挡位拒绝 |
+| `control_child_lock` | 开关后排儿童锁 | 受乘员 ABAC 权限限制 |
+| `control_charge_port` | 开关充电口盖 | 仅驻车状态允许开启 |
 | `control_cabin_device` | 控制四区车窗、四席座椅加热/通风、氛围灯与前后除霜 | 先读状态；动作/区域严格配对；声明式拒绝或限幅 |
+| `get_media_state` | 读取当前曲目、音量和队列 | 只读，不会误触发新播放 |
+| `play_media` | 联网检索并加载真实音乐试听 | 公开目录无 SLA；只提供 30 秒试听 |
+| `control_media` | 播放、暂停、切歌与调节音量 | 由确定性队列状态机执行 |
 | `get_capabilities` | 读取实际工具、信号、约束与集成摘要 | 由运行时注册表生成，防止能力幻觉 |
 | `manage_preferences` | 记住、列出或删除会话偏好 | 写/删需要本轮明确授权；仅当前会话 |
 | `query_trip_history` | 查询最近成功导航形成的行程回执 | 最多 10 条；不接收模型自行编造的记录 |
@@ -193,7 +208,7 @@ flowchart LR
 
 | 验证层 | 当前结果 | 说明 |
 | --- | --- | --- |
-| Python Agent 测试 | **103 / 103 通过** | 口语归一化、安全默认补参、组合任务回执回退、TaskPlan、ABAC、证据账本、会话恢复、WebSocket、多轮编排、工具、VSS 约束、OSRM 双端点容错、记忆、地图与评测 |
+| Python Agent 测试 | **321 / 321 通过** | 其中 200 条 v0.7 场景矩阵覆盖 8 个场景、25 种单域/跨域任务、8 种口语表面形式；其余覆盖车门确认、媒体协议、TaskPlan、ABAC、证据账本、WebSocket、OSRM 与记忆 |
 | TypeScript 兼容测试 | **43 / 43 通过** | 验证语音追加、对话档案、内置回退链路与 Python 可信语义保持一致 |
 | 模型行为评测 | **15 个任务 / 3 类** | Base、Hallucination、Disambiguation 各 5 个，支持单次或 3 次重复运行 |
 | 组合场景契约 | **24 / 24 通过** | 领域召回、工具白名单、DAG 节点、越权工具隔离和四类乘员策略 |
@@ -207,13 +222,13 @@ flowchart LR
 
 ## 五分钟演示路径
 
-1. **主链路：** 打开 `/`，输入“把空调调到 22 度，并导航去北京南站”，在大地图旁切换“任务”查看节点、领域、风险和执行波次。
+1. **主链路：** 打开 `/`，从地图底部“场景”选择“智能通勤”，直接发送预置的导航 + 空调 + 音乐任务，在右侧“任务”查看跨域节点与执行波次。
 2. **真实导航：** 点击“使用我的当前位置”，授权后导航到明确地点，展示 Nominatim、OSRM、道路折线、ETA 与预计到达电量。
 3. **多乘员权限：** 切换“访客”重复导航，展示模型即使调用工具也会被服务端 ABAC 拒绝；在“安全”页解释权限边界。
 4. **环境联锁：** 打开验证中心“① 车辆环境设置”注入“高速道路”和“降雨”，回到首页请求打开天窗，展示 VSS 硬约束和跨页面会话续接。
 5. **因果复盘：** 在“② 为什么执行/拦截”沿 `planId → taskId → policy → receipt → stateVersion` 解释结果。
-6. **量化评测：** 切换“③ 批量测试报告”，展示 24 条确定性契约与 15 条模型行为任务。
-7. **架构收束：** 打开 `/project`，用运行时能力注册表说明 2 个 Agent 边界、14 工具、25 信号和真实/沙箱边界。
+6. **量化评测：** 切换“③ 批量测试报告”，展示 200/200 场景矩阵、24 条基础确定性契约与 15 条模型行为任务。
+7. **架构收束：** 打开 `/project`，用运行时能力注册表说明 3 个 Agent 边界、23 工具、41 信号、9 条约束和真实/沙箱边界。
 
 更完整的求职讲述方式见 [作品集讲述手册](docs/PORTFOLIO_PLAYBOOK.md)。
 
@@ -291,7 +306,7 @@ npm ci
 npm run dev
 ```
 
-访问 [http://localhost:3000/](http://localhost:3000/)。首页、验证中心和项目说明中的动态能力都调用 Python 后端；要完整展示 v0.6，请保持 FastAPI 与 Next.js 同时运行。
+访问 [http://localhost:3000/](http://localhost:3000/)。首页、验证中心和项目说明中的动态能力都调用 Python 后端；要完整展示 v0.7，请保持 FastAPI 与 Next.js 同时运行。
 
 ### 4. 启用 DeepSeek Tool Calling
 
@@ -319,7 +334,7 @@ npm run check
 该命令依次运行：
 
 ```text
-ESLint → TypeScript → 43 条 Vitest → Ruff → 103 条 Pytest → Next.js 生产构建
+ESLint → TypeScript → 43 条 Vitest → Ruff → 321 条 Pytest → Next.js 生产构建
 ```
 
 质量脚本会优先使用仓库 `.venv` 的 Python；在 GitHub Actions 等没有 `.venv` 的环境中回退到当前 Python，因此无需先手动激活虚拟环境。
@@ -359,7 +374,7 @@ CabinGuard/
 │  │  ├─ session.py                 # 会话、TTL、限流与一次性确认
 │  │  ├─ reliability.py             # 多轮运行、五维评分与 Pass 指标
 │  │  └─ cli.py                     # serve / demo / chat / benchmark 入口
-│  └─ tests/                        # 103 条 Python Agent、任务图、策略、事件、地图、API 与评测测试
+│  └─ tests/                        # 321 条 Python Agent、200 场景矩阵、策略、媒体、事件、地图、API 与评测测试
 ├─ evaluation/cases.json            # Python / TypeScript 共用的 15 个版本化任务
 ├─ evaluation/composite_cases.json  # v0.6 的 24 个多域与权限组合场景
 ├─ pyproject.toml                   # Python 包、依赖和 cabinguard 命令
@@ -403,6 +418,7 @@ CabinGuard/
 | [混合多 Agent 演进决策](docs/MULTI_AGENT_EVOLUTION_PLAN.md) | 单 Agent 是否足够、何时拆 Domain Agent、Top 5 升级与作品集讲法 |
 | [v0.6 可信出行协同升级方案](docs/V06_TRUSTED_CABIN_COPILOT_PLAN.md) | 任务图、VSS 时序数字孪生、分域委托、中文优先 HMI、评测与完整交付标准 |
 | [v0.6 实施与评测报告](docs/V06_IMPLEMENTATION_REPORT.md) | 已落地代码、24 条组合场景、意图/实现差距、真实边界与下一阶段修复 |
+| [v0.7 场景与 HMI 升级报告](docs/V07_SCENARIO_HMI_UPGRADE.md) | 8 组体验场景、媒体与车身能力、地图优先布局、验收证据和真实边界 |
 | [决策日志](docs/DECISION_LOG.md) | 为什么这样做、替代方案和验证标准 |
 | [技术报告](docs/TECHNICAL_REPORT.md) | 实现原理、复核结果与生产化差距 |
 | [作品集手册](docs/PORTFOLIO_PLAYBOOK.md) | 面向 AI、互联网、具身智能和座舱 PM 的讲述重点 |

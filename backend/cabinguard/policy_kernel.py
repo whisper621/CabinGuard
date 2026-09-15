@@ -29,13 +29,22 @@ READ_TOOLS = frozenset(
         "get_vehicle_state",
         "get_weather",
         "get_climate_state",
+        "get_media_state",
         "get_capabilities",
         "query_trip_history",
         "search_places",
         "search_charging_stations",
     }
 )
-FRONT_PASSENGER_WRITE = frozenset({"set_climate", "control_cabin_device"})
+FRONT_PASSENGER_WRITE = frozenset(
+    {
+        "set_climate",
+        "control_cabin_device",
+        "control_air_quality",
+        "play_media",
+        "control_media",
+    }
+)
 REAR_CHILD_WRITE = frozenset({"control_cabin_device"})
 
 

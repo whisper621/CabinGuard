@@ -14,7 +14,7 @@ from .agent import AgentService
 from .models import Trace, VehicleState
 from .session import SessionStore
 
-REPORT_VERSION = "3.0.0"
+REPORT_VERSION = "3.1.0"
 TaskType = Literal["base", "hallucination", "disambiguation"]
 FinalCheck = Literal[
     "temperature23",

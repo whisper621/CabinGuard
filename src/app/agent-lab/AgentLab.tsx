@@ -1,6 +1,7 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import Image from "next/image";
 import ProductNav from "../components/ProductNav";
 import { cabinApiUrl, usesExternalCabinApi } from "../lib/apiBase";
 import { domainLabels, v6WebSocketUrl, type AgentTraceV6, type TaskPlan } from "../lib/cabinV6";
@@ -11,6 +12,7 @@ import LiveRouteMap from "./LiveRouteMap";
 
 type GeoPoint = { latitude: number; longitude: number };
 type RouteAlternative = { label: string; distanceKm: number; etaMinutes: number };
+type MediaTrack = { id: string; title: string; artist: string; album: string; artworkUrl: string; previewUrl: string; durationSeconds: number };
 type VehicleState = {
   speed: number; gear: "P" | "R" | "N" | "D"; battery: number; range: number; cabinTemperature: number;
   targetTemperature: number; fanLevel: number; circulation: "内循环" | "外循环";
@@ -25,11 +27,18 @@ type VehicleState = {
   windows: { driver: number; passenger: number; rearLeft: number; rearRight: number };
   seats: { driverHeating: number; passengerHeating: number; rearLeftHeating: number; rearRightHeating: number; driverVentilation: number; passengerVentilation: number; rearLeftVentilation: number; rearRightVentilation: number };
   ambientLight: { enabled: boolean; color: "ice_blue" | "warm_orange" | "violet" | "white"; brightness: number };
-  defrost: { front: boolean; rear: boolean }; childLock: boolean; trunkOpen: boolean;
+  defrost: { front: boolean; rear: boolean };
+  doors: { driver: boolean; passenger: boolean; rearLeft: boolean; rearRight: boolean };
+  mirrors: { driverFolded: boolean; passengerFolded: boolean; driverHeating: boolean; passengerHeating: boolean };
+  wiperMode: "off" | "auto" | "slow" | "medium" | "high";
+  airQuality: { pm25: number; purifierEnabled: boolean; purifierLevel: number; fragrance: "off" | "forest" | "ocean" | "citrus" };
+  childLock: boolean; trunkOpen: boolean; chargePortOpen: boolean;
+  media: { source: "none" | "music" | "radio" | "podcast"; playing: boolean; volume: number; currentIndex: number; current: MediaTrack | null; queue: MediaTrack[] };
 };
-type CabinScenario = "default" | "rain" | "moving";
+type CabinScenario = "default" | "rain" | "moving" | "highway" | "low_battery" | "child" | "pickup" | "rest" | "air_quality";
 type BrowserLocation = { latitude: number; longitude: number; accuracyMeters?: number; allowExternalRouting?: boolean };
 type Panel = "assistant" | "plan" | "trace" | "policy" | "history";
+type MapDrawer = "scenes" | "vehicle" | "route" | null;
 type SpeechRecognitionLike = {
   lang: string; continuous: boolean; interimResults: boolean; maxAlternatives: number;
   start: () => void; stop: () => void;
@@ -61,13 +70,23 @@ const initialVehicle: VehicleState = {
   windows: { driver: 0, passenger: 0, rearLeft: 0, rearRight: 0 },
   seats: { driverHeating: 0, passengerHeating: 0, rearLeftHeating: 0, rearRightHeating: 0, driverVentilation: 0, passengerVentilation: 0, rearLeftVentilation: 0, rearRightVentilation: 0 },
   ambientLight: { enabled: false, color: "ice_blue", brightness: 50 },
-  defrost: { front: false, rear: false }, childLock: false, trunkOpen: false,
+  defrost: { front: false, rear: false },
+  doors: { driver: false, passenger: false, rearLeft: false, rearRight: false },
+  mirrors: { driverFolded: false, passengerFolded: false, driverHeating: false, passengerHeating: false },
+  wiperMode: "off", airQuality: { pm25: 18, purifierEnabled: false, purifierLevel: 0, fragrance: "off" },
+  childLock: false, trunkOpen: false, chargePortOpen: false,
+  media: { source: "none", playing: false, volume: 35, currentIndex: 0, current: null, queue: [] },
 };
-const prompts = ["导航到昌平区政府，同时把空调调到23度", "把主驾车窗打开一半，再开2挡座椅通风", "把氛围灯调成紫色、亮度40%", "记住我喜欢22度外循环", "你现在支持哪些能力？"];
-const scenarioOptions: Array<{ value: CabinScenario; label: string; hint: string }> = [
-  { value: "default", label: "高速巡航", hint: "82 km/h" },
-  { value: "rain", label: "雨天驻车", hint: "P 挡 · 70%" },
-  { value: "moving", label: "城区行驶", hint: "35 km/h" },
+const prompts = ["导航到昌平区政府，同时把空调调到23度", "嗯，打开自动雨刷和后视镜加热，再播放轻音乐", "把四个车窗都打开20%，开启2挡空气净化", "打开右后车门", "你现在支持哪些能力？"];
+const scenarioOptions: Array<{ value: CabinScenario; label: string; hint: string; description: string; prompt: string }> = [
+  { value: "default", label: "智能通勤", hint: "跨域协同", description: "导航、舒适与媒体并行编排", prompt: "导航到昌平区政府，同时把空调调到23度，再播放轻音乐" },
+  { value: "rain", label: "雨雾安全", hint: "降雨 70%", description: "雨刷、除霜与后视镜联动", prompt: "嗯，打开自动雨刷、前后除霜和后视镜加热" },
+  { value: "highway", label: "高速巡航", hint: "110 km/h", description: "高速条件下验证安全拦截", prompt: "打开天窗一半，再把主驾车窗打开20%" },
+  { value: "low_battery", label: "低电补能", hint: "电量 12%", description: "沿途补能检索与能耗预测", prompt: "帮我找沿途绕行最少的充电站并导航过去" },
+  { value: "child", label: "儿童乘车", hint: "儿童锁开启", description: "后排权限与危险动作隔离", prompt: "打开右后车门并把右后车窗降到一半" },
+  { value: "pickup", label: "临时上下客", hint: "P 挡驻车", description: "车门一次性确认与状态回执", prompt: "打开右后车门" },
+  { value: "rest", label: "停车休息", hint: "舒适座舱", description: "座椅、温度、香氛和音乐联动", prompt: "开启主驾座椅通风2挡，空调调到22度，打开森林香氛并播放轻音乐" },
+  { value: "air_quality", label: "空气守护", hint: "PM2.5 168", description: "空气异常感知与净化执行", prompt: "车里空气不好，打开3挡净化器并切换森林香氛" },
 ];
 const policies = [
   ["目的地可信", "普通导航只能使用本会话实时检索返回的候选 ID。"],
@@ -84,7 +103,7 @@ const CONVERSATION_STORAGE_KEY = "cabinguard-conversations-v1";
 const welcomeMessages: Message[] = [{ role: "assistant", content: "驾驶智能体已就绪。你可以导航到任意可检索地点、组合执行座舱任务，或测试安全拦截。", time: "已就绪" }];
 
 function mergeVehicle(vehicle: VehicleState): VehicleState {
-  return { ...initialVehicle, ...vehicle, windows: { ...initialVehicle.windows, ...vehicle.windows }, seats: { ...initialVehicle.seats, ...vehicle.seats }, ambientLight: { ...initialVehicle.ambientLight, ...vehicle.ambientLight }, defrost: { ...initialVehicle.defrost, ...vehicle.defrost } };
+  return { ...initialVehicle, ...vehicle, windows: { ...initialVehicle.windows, ...vehicle.windows }, seats: { ...initialVehicle.seats, ...vehicle.seats }, ambientLight: { ...initialVehicle.ambientLight, ...vehicle.ambientLight }, defrost: { ...initialVehicle.defrost, ...vehicle.defrost }, doors: { ...initialVehicle.doors, ...vehicle.doors }, mirrors: { ...initialVehicle.mirrors, ...vehicle.mirrors }, airQuality: { ...initialVehicle.airQuality, ...vehicle.airQuality }, media: { ...initialVehicle.media, ...vehicle.media, queue: vehicle.media?.queue ?? [] } };
 }
 
 function getSpeechRecognitionConstructor() {
@@ -93,8 +112,16 @@ function getSpeechRecognitionConstructor() {
   return speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition;
 }
 
-function Metric({ label, value, accent }: { label: string; value: string; accent?: string }) {
-  return <div className="rounded-2xl border border-white/10 bg-white/[0.045] px-4 py-3 shadow-sm"><p className="text-xs uppercase tracking-[0.15em] text-slate-500">{label}</p><p className={`mt-1 text-xl font-semibold tracking-tight ${accent ?? "text-slate-50"}`}>{value}</p></div>;
+function StatusItem({ label, value, accent }: { label: string; value: string; accent?: string }) {
+  return <div className="min-w-[112px] flex-1 border-r border-white/[0.07] px-3 last:border-r-0"><p className="text-[10px] tracking-[0.12em] text-slate-500">{label}</p><p className={`mt-1 truncate text-sm font-semibold ${accent ?? "text-slate-100"}`}>{value}</p></div>;
+}
+
+function DockButton({ active, label, value, onClick }: { active?: boolean; label: string; value: string; onClick: () => void }) {
+  return <button type="button" onClick={onClick} className={`min-w-[68px] rounded-2xl px-3 py-2 text-center transition ${active ? "bg-cyan-400/15 text-cyan-200" : "text-slate-300 hover:bg-white/10"}`}><span className="block text-sm font-semibold">{value}</span><span className="mt-0.5 block text-[10px] text-slate-500">{label}</span></button>;
+}
+
+function DrawerShell({ title, subtitle, onClose, children }: { title: string; subtitle: string; onClose: () => void; children: ReactNode }) {
+  return <section className="absolute inset-y-4 right-4 z-[700] flex w-[min(430px,calc(100%-32px))] flex-col overflow-hidden rounded-3xl border border-white/10 bg-[#09111f]/95 shadow-2xl shadow-black/60 backdrop-blur-2xl"><header className="flex items-start justify-between gap-4 border-b border-white/10 p-5"><div><h3 className="font-semibold text-white">{title}</h3><p className="mt-1 text-xs text-slate-500">{subtitle}</p></div><button type="button" aria-label="关闭抽屉" onClick={onClose} className="grid h-8 w-8 place-items-center rounded-full bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white">×</button></header><div className="flex-1 overflow-y-auto p-4">{children}</div></section>;
 }
 
 function TraceCard({ trace, index }: { trace: Trace; index: number }) {
@@ -121,6 +148,7 @@ export default function AgentLab() {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [panel, setPanel] = useState<Panel>("assistant");
+  const [mapDrawer, setMapDrawer] = useState<MapDrawer>(null);
   const [browserLocation, setBrowserLocation] = useState<BrowserLocation | null>(null);
   const [locationBusy, setLocationBusy] = useState(false);
   const [voiceSupported, setVoiceSupported] = useState(false);
@@ -135,6 +163,7 @@ export default function AgentLab() {
   const latestInputRef = useRef("");
   const keepListeningRef = useRef(false);
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const [meta, setMeta] = useState({ model: "等待调用", turns: 0, tokens: 0, latency: 0, promptVersion: "—", toolVersion: "—" });
   const hasLiveRoute = vehicle.routeProvider.includes("OSRM") && vehicle.routePolyline.length >= 2;
   const routeFreshness = useMemo(() => {
@@ -199,6 +228,13 @@ export default function AgentLab() {
     if (panel !== "assistant" || !chatScrollRef.current) return;
     chatScrollRef.current.scrollTo({ top: chatScrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, busy, panel]);
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio || !vehicle.media.current?.previewUrl) return;
+    audio.volume = vehicle.media.volume / 100;
+    if (vehicle.media.playing) void audio.play().catch(() => undefined);
+    else audio.pause();
+  }, [vehicle.media.current?.previewUrl, vehicle.media.playing, vehicle.media.volume]);
 
   const speak = (text: string) => {
     if (!voiceReply || !speechOutputSupported) return;
@@ -243,7 +279,7 @@ export default function AgentLab() {
   };
   const changeScenario = async (nextScenario: CabinScenario) => {
     if (busy || nextScenario === scenario) return; setBusy(true);
-    try { await createSession(nextScenario, browserLocation ?? undefined, role); setScenario(nextScenario); setMessages([{ role: "assistant", content: `已切换到${scenarioOptions.find((item) => item.value === nextScenario)?.label}，会话状态和确认链已隔离。`, time: now() }]); setTraces([]); setTaskPlan(null); }
+    try { const option = scenarioOptions.find((item) => item.value === nextScenario); await createSession(nextScenario, browserLocation ?? undefined, role); setScenario(nextScenario); setMessages([{ role: "assistant", content: `已切换到${option?.label}。场景状态和确认链已隔离，推荐任务已放入输入框，可直接发送体验。`, time: now() }]); setInput(option?.prompt ?? ""); setTraces([]); setTaskPlan(null); setMapDrawer(null); }
     catch (error) { const message = error instanceof Error ? error.message : "场景切换失败"; setMessages((current) => [...current, { role: "assistant", content: message, time: now() }]); } finally { setBusy(false); }
   };
   const changeRole = async (nextRole: OccupantRole) => {
@@ -255,28 +291,61 @@ export default function AgentLab() {
   return <main className="min-h-screen bg-[#070b14] text-slate-100">
     <ProductNav active="/" status={<span className={`rounded-full border px-2.5 py-1 text-[11px] font-medium ${usesExternalCabinApi ? "border-emerald-400/25 bg-emerald-400/10 text-emerald-300" : "border-amber-400/25 bg-amber-400/10 text-amber-300"}`}>{usesExternalCabinApi ? "Python 核心在线" : "Python 核心未连接"}</span>} actions={<button className="whitespace-nowrap rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-slate-300 hover:bg-white/10" onClick={() => void startNewConversation()}>新建对话</button>} />
 
-    <section className="mx-auto grid max-w-[1720px] gap-5 px-5 py-5 xl:grid-cols-[minmax(0,1fr)_430px] xl:px-8"><div className="min-w-0 space-y-5">
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6"><Metric label="车速 / 挡位" value={`${vehicle.speed} km/h · ${vehicle.gear}`} accent="text-cyan-300" /><Metric label="动力电池" value={`${vehicle.battery}%`} accent={vehicle.battery < 20 ? "text-amber-300" : "text-emerald-300"} /><Metric label="预计续航" value={`${vehicle.range} km`} /><Metric label="车内温度" value={`${vehicle.cabinTemperature}℃`} /><Metric label="空调设定" value={`${vehicle.targetTemperature}℃ · ${vehicle.fanLevel}档`} /><Metric label="天气" value={`${vehicle.weather} · ${vehicle.rainProbability}%`} /></div>
-
-      <section className="rounded-3xl border border-white/10 bg-[#0b1220] p-5"><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-semibold">座舱域实时状态</h2><p className="mt-1 text-sm text-slate-500">由 Python 车辆沙箱回执驱动 · 可通过自然语言组合控制</p></div><span className="rounded-full border border-violet-400/20 bg-violet-400/[0.07] px-3 py-1 text-xs text-violet-300">VSS-aligned</span></div><div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">{[
-        ["车窗", `主 ${vehicle.windows.driver}% · 副 ${vehicle.windows.passenger}% · 后 ${vehicle.windows.rearLeft}%/${vehicle.windows.rearRight}%`],
-        ["座椅加热", `主 ${vehicle.seats.driverHeating}挡 · 副 ${vehicle.seats.passengerHeating}挡`],
-        ["座椅通风", `主 ${vehicle.seats.driverVentilation}挡 · 副 ${vehicle.seats.passengerVentilation}挡`],
-        ["氛围灯", vehicle.ambientLight.enabled ? `${vehicle.ambientLight.color} · ${vehicle.ambientLight.brightness}%` : "关闭"],
-        ["前/后除霜", `${vehicle.defrost.front ? "ON" : "OFF"} / ${vehicle.defrost.rear ? "ON" : "OFF"}`],
-        ["车身安全", `儿童锁 ${vehicle.childLock ? "ON" : "OFF"} · 尾门 ${vehicle.trunkOpen ? "开" : "关"}`],
-      ].map(([label, value]) => <div key={label} className="rounded-xl border border-white/[0.07] bg-white/[0.03] p-3"><p className="text-xs text-slate-500">{label}</p><p className="mt-2 text-sm font-medium text-slate-200">{value}</p></div>)}</div></section>
-
-      <section className="overflow-hidden rounded-3xl border border-white/10 bg-[#0b1220] shadow-2xl shadow-black/20"><div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-5 py-4"><div><div className="flex items-center gap-2"><span className={`h-2.5 w-2.5 rounded-full ${hasLiveRoute ? "animate-pulse bg-emerald-400" : "bg-slate-600"}`} /><h2 className="font-semibold">联网道路导航</h2><span className="text-xs text-slate-500">{vehicle.routeProvider}</span></div><p className="mt-1 text-sm text-slate-400">{vehicle.destination === "未设置" ? "说出任意地址或地点，Agent 将检索并规划可驾驶路线" : `${vehicle.currentLocation} → ${vehicle.destination}`}</p></div><div className="flex flex-wrap items-center gap-2"><label className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-slate-400"><span>乘员身份</span><select aria-label="乘员身份" value={role} disabled={busy} onChange={(event) => void changeRole(event.target.value as OccupantRole)} className="bg-transparent font-medium text-cyan-200 outline-none">{(Object.entries(zhCN.roles) as Array<[OccupantRole, string]>).map(([value, label]) => <option key={value} value={value} className="bg-slate-900 text-white">{label}</option>)}</select></label><div className="flex rounded-xl border border-white/10 bg-black/20 p-1">{scenarioOptions.map((option) => <button key={option.value} disabled={busy} title={option.hint} onClick={() => void changeScenario(option.value)} className={`rounded-lg px-3 py-2 text-xs transition ${scenario === option.value ? "bg-white/10 text-white" : "text-slate-500 hover:text-slate-200"}`}>{option.label}</button>)}</div><button type="button" disabled={busy || locationBusy} onClick={useCurrentLocation} className="rounded-xl bg-blue-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-blue-500/20 hover:bg-blue-400 disabled:opacity-50">{locationBusy ? "正在定位…" : vehicle.locationSource === "browser_geolocation" ? "已使用当前位置" : "使用我的当前位置"}</button></div></div>
-        <div className="relative h-[480px]"><LiveRouteMap latitude={vehicle.latitude} longitude={vehicle.longitude} destinationLatitude={vehicle.destinationLatitude} destinationLongitude={vehicle.destinationLongitude} destination={vehicle.destination} routePolyline={vehicle.routePolyline} />
-          <div className="absolute left-4 top-4 z-[500] max-w-[320px] rounded-2xl border border-white/10 bg-slate-950/85 p-4 shadow-xl backdrop-blur-xl"><div className="flex items-center justify-between gap-4"><p className="text-xs tracking-[0.16em] text-slate-500">道路路线</p><span className={`rounded-full px-2 py-1 text-[11px] ${hasLiveRoute ? "bg-emerald-400/15 text-emerald-300" : "bg-white/10 text-slate-400"}`}>{hasLiveRoute ? "OSRM 联网算路" : "等待路线"}</span></div><p className="mt-2 truncate text-base font-semibold text-white">{vehicle.destination}</p><div className="mt-3 grid grid-cols-3 gap-4"><div><p className="text-xs text-slate-500">距离</p><p className="mt-1 font-semibold">{vehicle.routeDistanceKm === null ? "—" : `${vehicle.routeDistanceKm} 公里`}</p></div><div><p className="text-xs text-slate-500">用时</p><p className="mt-1 font-semibold">{vehicle.routeEtaMinutes === null ? "—" : `${vehicle.routeEtaMinutes} 分钟`}</p></div><div><p className="text-xs text-slate-500">到达电量</p><p className={`mt-1 font-semibold ${vehicle.estimatedArrivalBattery !== null && vehicle.estimatedArrivalBattery < 10 ? "text-amber-300" : "text-emerald-300"}`}>{vehicle.estimatedArrivalBattery === null ? "—" : `${vehicle.estimatedArrivalBattery}%`}</p></div></div>{vehicle.navigationUrl && <a href={vehicle.navigationUrl} target="_blank" rel="noreferrer" className="mt-4 block rounded-xl bg-white/10 px-3 py-2 text-center text-sm font-medium text-cyan-300 hover:bg-white/15">在 OpenStreetMap 核对路线 ↗</a>}</div>
-          <div className="absolute bottom-4 left-4 z-[500] rounded-xl border border-white/10 bg-slate-950/80 px-3 py-2 text-xs text-slate-300 backdrop-blur">{vehicle.locationSource === "browser_geolocation" ? `浏览器定位 ±${Math.round(vehicle.locationAccuracyMeters ?? 0)} m` : "模拟起点"} · 路线更新 {routeFreshness}</div>
-        </div><div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 px-5 py-3 text-xs text-slate-500"><p>地图 © OpenStreetMap contributors · 路线 OSRM · 无实时路况与车道级引导</p><p>{vehicle.locationSource === "browser_geolocation" ? "坐标仅在授权后发送给算路服务，不进入模型回执" : `当前从“${vehicle.currentLocation}”模拟坐标算路，可点击上方按钮改为真实起点`}</p></div>
+    <section className="mx-auto grid max-w-[1840px] gap-4 px-4 py-4 xl:grid-cols-[minmax(0,1fr)_430px] xl:px-6"><div className="min-w-0 space-y-3">
+      <section aria-label="车辆关键状态" className="flex min-h-[58px] overflow-x-auto rounded-2xl border border-white/[0.08] bg-[#0b1220]/95 py-3 shadow-lg shadow-black/10">
+        <StatusItem label="车速 / 挡位" value={vehicle.speed + " km/h · " + vehicle.gear} accent="text-cyan-300" />
+        <StatusItem label="动力电池" value={vehicle.battery + "% · " + vehicle.range + " km"} accent={vehicle.battery < 20 ? "text-amber-300" : "text-emerald-300"} />
+        <StatusItem label="座舱温度" value={vehicle.cabinTemperature + "℃ → " + vehicle.targetTemperature + "℃"} />
+        <StatusItem label="天气" value={vehicle.weather + " · 降雨 " + vehicle.rainProbability + "%"} />
+        <StatusItem label="空气质量" value={"PM2.5 " + vehicle.airQuality.pm25 + " · " + (vehicle.airQuality.purifierEnabled ? "净化 " + vehicle.airQuality.purifierLevel + "挡" : "净化关闭")} accent={vehicle.airQuality.pm25 > 75 ? "text-amber-300" : "text-emerald-300"} />
+        <StatusItem label="主动安全" value={(vehicle.childLock ? "儿童锁 ON" : "儿童锁 OFF") + " · 雨刷 " + vehicle.wiperMode} />
       </section>
 
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]"><section className="rounded-3xl border border-white/10 bg-[#0b1220] p-5"><div className="flex items-center justify-between gap-3"><div><h2 className="font-semibold">路线结果</h2><p className="mt-1 text-sm text-slate-500">OSRM 返回的关键道路步骤、备选路线与估算能耗；不代表实时交通推荐</p></div><span className="rounded-full bg-white/5 px-3 py-1 text-xs text-slate-400">{vehicle.routeSteps.length} 个关键步骤</span></div><div className="mt-4 grid gap-4 md:grid-cols-2"><div className="max-h-[640px] space-y-2 overflow-y-auto pr-1">{(vehicle.routeSteps.length ? vehicle.routeSteps : ["等待 Agent 完成目的地检索与道路算路"]).map((step, index) => <div key={`${step}-${index}`} className="flex gap-3 rounded-xl border border-white/[0.07] bg-white/[0.03] p-3 text-sm text-slate-300"><span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-blue-500/15 text-xs font-semibold text-blue-300">{index + 1}</span><p className="leading-6">{step}</p></div>)}</div><div className="space-y-2"><p className="mb-2 text-xs tracking-[0.14em] text-slate-500">服务返回路线</p>{(vehicle.routeAlternatives.length ? vehicle.routeAlternatives : [{ label: "等待路线", distanceKm: 0, etaMinutes: 0 }]).map((route, index) => <div key={`${route.label}-${index}`} className={`rounded-xl border p-3 ${index === 0 && hasLiveRoute ? "border-cyan-400/25 bg-cyan-400/[0.07]" : "border-white/[0.07] bg-white/[0.03]"}`}><div className="flex items-center justify-between gap-3"><p className="text-sm font-medium text-slate-200">{route.label}</p>{index === 0 && hasLiveRoute && <span className="text-xs text-cyan-300">当前</span>}</div><p className="mt-2 text-sm text-slate-500">{route.distanceKm ? `${route.distanceKm} km · ${route.etaMinutes} 分钟` : "完成算路后显示"}</p></div>)}</div></div></section>
-        <section className="rounded-3xl border border-white/10 bg-[#0b1220] p-5"><div className="flex items-center justify-between gap-3"><div><h2 className="font-semibold">Agent 运行态</h2><p className="mt-1 text-sm text-slate-500">规划质量与系统可观测性</p></div><span className={`h-2.5 w-2.5 rounded-full ${sessionId ? "bg-emerald-400" : "animate-pulse bg-amber-400"}`} /></div><dl className="mt-4 grid grid-cols-2 gap-3 text-sm">{[["模型", meta.model], ["工具调用", `${traces.length}`], ["规划轮次", `${meta.turns}`], ["端到端延迟", meta.latency ? `${meta.latency} ms` : "—"], ["车辆状态版本", `v${stateVersion}`], ["当前身份", zhCN.roles[role]]].map(([label, value]) => <div key={label} className="rounded-xl border border-white/[0.07] bg-white/[0.03] p-3"><dt className="text-xs text-slate-500">{label}</dt><dd className="mt-1 truncate font-medium text-slate-200">{value}</dd></div>)}</dl><div className="mt-4 rounded-xl border border-blue-400/15 bg-blue-400/[0.06] p-3 text-sm leading-6 text-blue-200"><span className="font-medium">执行链：</span>意图识别 → 任务图编排 → 权限与策略裁决 → 确定性工具 → 状态版本更新 → 证据回执</div></section>
-      </div>
+      <section className="overflow-hidden rounded-3xl border border-white/10 bg-[#0b1220] shadow-2xl shadow-black/30">
+        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.07] px-5 py-3">
+          <div className="min-w-0"><div className="flex items-center gap-2"><span className={"h-2.5 w-2.5 rounded-full " + (hasLiveRoute ? "animate-pulse bg-emerald-400" : "bg-slate-600")} /><h1 className="font-semibold">智能座舱 · 地图工作台</h1><span className="rounded-full border border-violet-400/15 bg-violet-400/[0.06] px-2 py-1 text-[10px] text-violet-300">VSS-aligned</span></div><p className="mt-1 truncate text-xs text-slate-500">{vehicle.currentLocation} · {vehicle.locationSource === "browser_geolocation" ? "真实定位" : "沙箱坐标"}</p></div>
+          <div className="flex items-center gap-2">
+            <label className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-slate-400"><span>身份</span><select aria-label="乘员身份" value={role} disabled={busy} onChange={(event) => void changeRole(event.target.value as OccupantRole)} className="bg-transparent font-medium text-cyan-200 outline-none">{(Object.entries(zhCN.roles) as Array<[OccupantRole, string]>).map(([value, label]) => <option key={value} value={value} className="bg-slate-900 text-white">{label}</option>)}</select></label>
+            <button type="button" disabled={busy || locationBusy} onClick={useCurrentLocation} className="rounded-xl bg-blue-500 px-3.5 py-2 text-xs font-semibold text-white shadow-lg shadow-blue-500/20 hover:bg-blue-400 disabled:opacity-50">{locationBusy ? "正在定位…" : vehicle.locationSource === "browser_geolocation" ? "定位已授权" : "使用当前位置"}</button>
+          </div>
+        </header>
+
+        <div className="relative h-[clamp(640px,calc(100vh-218px),880px)] min-h-[640px]">
+          <LiveRouteMap latitude={vehicle.latitude} longitude={vehicle.longitude} destinationLatitude={vehicle.destinationLatitude} destinationLongitude={vehicle.destinationLongitude} destination={vehicle.destination} routePolyline={vehicle.routePolyline} />
+
+          <section className="absolute left-4 top-4 z-[500] w-[min(330px,calc(100%-32px))] rounded-2xl border border-white/10 bg-slate-950/[0.88] p-4 shadow-2xl backdrop-blur-xl">
+            <div className="flex items-center justify-between gap-3"><p className="text-[10px] tracking-[0.16em] text-slate-500">ROUTE INTELLIGENCE</p><span className={"rounded-full px-2 py-1 text-[10px] " + (hasLiveRoute ? "bg-emerald-400/15 text-emerald-300" : "bg-white/10 text-slate-400")}>{hasLiveRoute ? "联网道路路线" : "等待目的地"}</span></div>
+            <p className="mt-2 truncate text-base font-semibold text-white">{vehicle.destination}</p>
+            <div className="mt-3 grid grid-cols-3 gap-3 text-sm"><div><p className="text-[10px] text-slate-500">距离</p><p className="mt-1 font-semibold">{vehicle.routeDistanceKm === null ? "—" : vehicle.routeDistanceKm + " km"}</p></div><div><p className="text-[10px] text-slate-500">用时</p><p className="mt-1 font-semibold">{vehicle.routeEtaMinutes === null ? "—" : vehicle.routeEtaMinutes + " 分"}</p></div><div><p className="text-[10px] text-slate-500">到达电量</p><p className={"mt-1 font-semibold " + (vehicle.estimatedArrivalBattery !== null && vehicle.estimatedArrivalBattery < 10 ? "text-amber-300" : "text-emerald-300")}>{vehicle.estimatedArrivalBattery === null ? "—" : vehicle.estimatedArrivalBattery + "%"}</p></div></div>
+            {vehicle.navigationUrl && <a href={vehicle.navigationUrl} target="_blank" rel="noreferrer" className="mt-3 block rounded-xl bg-white/10 px-3 py-2 text-center text-xs font-medium text-cyan-300 hover:bg-white/15">在 OpenStreetMap 核对 ↗</a>}
+          </section>
+
+          <div className="absolute right-4 top-4 z-[500] hidden max-w-[280px] rounded-2xl border border-white/10 bg-slate-950/[0.82] p-3 backdrop-blur-xl md:block"><p className="text-[10px] tracking-[0.14em] text-slate-500">CONTEXT AWARENESS</p><div className="mt-2 flex flex-wrap gap-1.5 text-[10px]"><span className="rounded-full bg-white/[0.07] px-2 py-1">雨刷 {vehicle.wiperMode}</span><span className="rounded-full bg-white/[0.07] px-2 py-1">车门 {Object.values(vehicle.doors).filter(Boolean).length ? "有开启" : "全关"}</span><span className="rounded-full bg-white/[0.07] px-2 py-1">香氛 {vehicle.airQuality.fragrance}</span><span className="rounded-full bg-white/[0.07] px-2 py-1">状态 v{stateVersion}</span><span className="rounded-full bg-cyan-400/10 px-2 py-1 text-cyan-300">{meta.model}{meta.latency ? ` · ${meta.latency}ms` : ""}</span></div></div>
+
+          {vehicle.media.current && <section className="absolute bottom-24 left-4 z-[500] flex w-[min(350px,calc(100%-32px))] items-center gap-3 rounded-2xl border border-white/10 bg-slate-950/[0.88] p-3 shadow-xl backdrop-blur-xl">{vehicle.media.current.artworkUrl ? <Image unoptimized src={vehicle.media.current.artworkUrl} alt="专辑封面" width={48} height={48} className="h-12 w-12 rounded-xl object-cover" /> : <div className="grid h-12 w-12 place-items-center rounded-xl bg-violet-500/20 text-violet-200">♫</div>}<div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold text-white">{vehicle.media.current.title}</p><p className="truncate text-xs text-slate-500">{vehicle.media.current.artist} · 30 秒真实试听</p></div><button type="button" disabled={busy} onClick={() => void submit(vehicle.media.playing ? "暂停音乐" : "继续播放音乐")} className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/10 text-sm text-white hover:bg-white/20">{vehicle.media.playing ? "Ⅱ" : "▶"}</button></section>}
+          {vehicle.media.current?.previewUrl && <audio ref={audioRef} src={vehicle.media.current.previewUrl} preload="metadata" onEnded={() => void submit("下一首")} />}
+
+          {mapDrawer === "scenes" && <DrawerShell title="场景中心" subtitle="8 组可执行座舱任务，不是静态演示卡片" onClose={() => setMapDrawer(null)}><div className="grid grid-cols-2 gap-3">{scenarioOptions.map((option) => <button type="button" key={option.value} disabled={busy} onClick={() => void changeScenario(option.value)} className={"rounded-2xl border p-4 text-left transition " + (scenario === option.value ? "border-cyan-400/35 bg-cyan-400/[0.09]" : "border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.07]")}><div className="flex items-center justify-between gap-2"><p className="text-sm font-semibold text-white">{option.label}</p>{scenario === option.value && <span className="text-[10px] text-cyan-300">当前</span>}</div><p className="mt-1 text-[10px] text-cyan-300">{option.hint}</p><p className="mt-2 text-xs leading-5 text-slate-500">{option.description}</p></button>)}</div><p className="mt-4 rounded-xl bg-white/[0.04] p-3 text-xs leading-5 text-slate-500">切换场景会创建隔离车辆会话，并把推荐任务放入右侧输入框。旧对话仍保留在历史中。</p></DrawerShell>}
+
+          {mapDrawer === "vehicle" && <DrawerShell title="车辆控制中心" subtitle="所有快捷操作仍经过 Agent、权限与策略核" onClose={() => setMapDrawer(null)}><div className="space-y-4">
+            <div><p className="mb-2 text-xs text-slate-500">舒适与空气</p><div className="grid grid-cols-2 gap-2">{[["空调 22℃", "把空调调到22度"], ["座椅通风", "打开主驾座椅通风2挡"], ["空气净化", "打开2挡空气净化器"], ["森林香氛", "打开森林香氛"]].map(([label, command]) => <button type="button" key={label} onClick={() => void submit(command)} disabled={busy} className="rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-3 text-sm text-slate-200 hover:bg-white/[0.07]">{label}</button>)}</div></div>
+            <div><p className="mb-2 text-xs text-slate-500">视野与车身</p><div className="grid grid-cols-2 gap-2">{[["自动雨刷", "打开自动雨刷"], ["后视镜加热", "打开两侧后视镜加热"], ["四窗 20%", "把四个车窗都打开20%"], ["儿童锁", vehicle.childLock ? "关闭儿童锁" : "打开儿童锁"], ["右后车门", vehicle.doors.rearRight ? "关闭右后车门" : "打开右后车门"], ["充电口", vehicle.chargePortOpen ? "关闭充电口" : "打开充电口"]].map(([label, command]) => <button type="button" key={label} onClick={() => void submit(command)} disabled={busy} className="rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-3 text-sm text-slate-200 hover:bg-white/[0.07]">{label}</button>)}</div></div>
+            <dl className="grid grid-cols-2 gap-2 text-xs">{[["四门", Object.values(vehicle.doors).some(Boolean) ? "存在开启" : "全部关闭"], ["后视镜", vehicle.mirrors.driverFolded ? "已折叠" : "已展开"], ["净化器", vehicle.airQuality.purifierEnabled ? vehicle.airQuality.purifierLevel + " 挡" : "关闭"], ["充电口", vehicle.chargePortOpen ? "开启" : "关闭"]].map(([label, value]) => <div key={label} className="rounded-xl bg-black/20 p-3"><dt className="text-slate-600">{label}</dt><dd className="mt-1 text-slate-300">{value}</dd></div>)}</dl>
+          </div></DrawerShell>}
+
+          {mapDrawer === "route" && <DrawerShell title="路线详情" subtitle={vehicle.routeProvider + " · 更新 " + routeFreshness} onClose={() => setMapDrawer(null)}><div className="space-y-4"><div className="grid grid-cols-3 gap-2">{[[vehicle.routeDistanceKm === null ? "—" : vehicle.routeDistanceKm + " km", "距离"], [vehicle.routeEtaMinutes === null ? "—" : vehicle.routeEtaMinutes + " 分钟", "预计用时"], [vehicle.estimatedArrivalBattery === null ? "—" : vehicle.estimatedArrivalBattery + "%", "到达电量"]].map(([value, label]) => <div key={label} className="rounded-xl bg-white/[0.04] p-3"><p className="text-sm font-semibold text-white">{value}</p><p className="mt-1 text-[10px] text-slate-500">{label}</p></div>)}</div><div className="space-y-2">{(vehicle.routeSteps.length ? vehicle.routeSteps : ["等待 Agent 完成目的地检索与道路算路"]).map((step, index) => <div key={step + "-" + index} className="flex gap-3 rounded-xl border border-white/[0.07] bg-white/[0.03] p-3 text-sm text-slate-300"><span className="grid h-6 w-6 shrink-0 place-items-center rounded-lg bg-blue-500/15 text-xs text-blue-300">{index + 1}</span><p className="leading-6">{step}</p></div>)}</div><div className="space-y-2">{vehicle.routeAlternatives.map((route, index) => <div key={route.label} className={"rounded-xl border p-3 " + (index === 0 ? "border-cyan-400/25 bg-cyan-400/[0.07]" : "border-white/[0.07] bg-white/[0.03]")}><p className="text-sm font-medium">{route.label}</p><p className="mt-1 text-xs text-slate-500">{route.distanceKm} km · {route.etaMinutes} 分钟</p></div>)}</div></div></DrawerShell>}
+
+          <nav aria-label="座舱快捷控制" className="absolute bottom-4 left-1/2 z-[600] flex max-w-[calc(100%-32px)] -translate-x-1/2 items-center gap-1 overflow-x-auto rounded-[22px] border border-white/10 bg-slate-950/[0.88] p-1.5 shadow-2xl shadow-black/50 backdrop-blur-2xl">
+            <DockButton active={mapDrawer === "scenes"} label="体验模式" value="场景" onClick={() => setMapDrawer((current) => current === "scenes" ? null : "scenes")} />
+            <DockButton label={"风量 " + vehicle.fanLevel + "挡"} value={vehicle.targetTemperature + "℃"} onClick={() => void submit("把空调调到22度")} />
+            <button type="button" disabled={!voiceSupported || busy} aria-label={listening ? "停止语音输入" : "开始语音输入"} onClick={toggleVoiceInput} className={"mx-1 grid h-14 w-14 shrink-0 place-items-center rounded-full border text-sm font-semibold shadow-lg transition " + (listening ? "border-rose-300/40 bg-rose-500 text-white shadow-rose-500/25" : "border-cyan-300/30 bg-blue-500 text-white shadow-blue-500/25 hover:bg-blue-400")}>{listening ? "停止" : "语音"}</button>
+            <DockButton label={vehicle.media.playing ? "正在播放" : "试听目录"} value={vehicle.media.current ? (vehicle.media.playing ? "暂停" : "播放") : "音乐"} onClick={() => void submit(vehicle.media.current ? (vehicle.media.playing ? "暂停音乐" : "继续播放音乐") : "播放轻音乐")} />
+            <DockButton active={mapDrawer === "vehicle"} label="设备与状态" value="车辆" onClick={() => setMapDrawer((current) => current === "vehicle" ? null : "vehicle")} />
+            <DockButton active={mapDrawer === "route"} label={hasLiveRoute ? "路线已就绪" : "等待算路"} value="路线" onClick={() => setMapDrawer((current) => current === "route" ? null : "route")} />
+          </nav>
+        </div>
+        <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-white/[0.07] px-5 py-2 text-[10px] text-slate-600"><p>地图 © OpenStreetMap · 道路路线 OSRM · 音乐试听 Apple / Deezer 公共目录</p><p>{vehicle.locationSource === "browser_geolocation" ? "定位精度约 ±" + Math.round(vehicle.locationAccuracyMeters ?? 0) + " m；坐标不进入模型回执" : "当前使用沙箱坐标，授权后可从真实位置算路"}</p></footer>
+      </section>
     </div>
 
     <aside className="min-w-0 xl:sticky xl:top-[94px] xl:h-[calc(100vh-114px)]"><section className="flex h-[760px] max-h-[calc(100vh-114px)] min-h-[640px] flex-col overflow-hidden rounded-3xl border border-white/10 bg-[#0b1220] shadow-2xl shadow-black/30"><div className="border-b border-white/10 px-4 pt-4"><div className="mb-3 flex items-center justify-between gap-3"><div><h2 className="font-semibold">座舱主智能体</h2><p className="mt-0.5 text-xs text-slate-500">统一交互 · 多领域编排 · 策略核执行</p></div><button type="button" disabled={!speechOutputSupported} aria-pressed={voiceReply} onClick={() => { window.speechSynthesis?.cancel(); setVoiceReply((current) => !current); }} className={`rounded-lg border px-2.5 py-1.5 text-xs ${voiceReply ? "border-cyan-400/25 bg-cyan-400/10 text-cyan-300" : "border-white/10 text-slate-500"}`}>语音播报 {voiceReply ? "开" : "关"}</button></div><div className="grid grid-cols-5 gap-1 rounded-xl bg-black/20 p-1">{([["assistant", "对话"], ["plan", `任务 ${taskPlan?.nodes.length ?? 0}`], ["trace", `记录 ${traces.length}`], ["policy", "安全"], ["history", `历史 ${conversations.length}`]] as Array<[Panel, string]>).map(([value, label]) => <button key={value} onClick={() => setPanel(value)} className={`rounded-lg px-1 py-2 text-xs font-medium ${panel === value ? "bg-white/10 text-white shadow" : "text-slate-500 hover:text-slate-200"}`}>{label}</button>)}</div></div>

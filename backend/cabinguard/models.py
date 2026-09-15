@@ -4,7 +4,17 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-Scenario = Literal["default", "rain", "moving"]
+Scenario = Literal[
+    "default",
+    "rain",
+    "moving",
+    "highway",
+    "low_battery",
+    "child",
+    "pickup",
+    "rest",
+    "air_quality",
+]
 ToolStatus = Literal["success", "blocked"]
 
 
@@ -60,6 +70,56 @@ class DefrostState(BaseModel):
     rear: bool = False
 
 
+class DoorState(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    driver: bool = False
+    passenger: bool = False
+    rear_left: bool = Field(False, alias="rearLeft")
+    rear_right: bool = Field(False, alias="rearRight")
+
+
+class MirrorState(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    driver_folded: bool = Field(False, alias="driverFolded")
+    passenger_folded: bool = Field(False, alias="passengerFolded")
+    driver_heating: bool = Field(False, alias="driverHeating")
+    passenger_heating: bool = Field(False, alias="passengerHeating")
+
+
+class AirQualityState(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    pm25: int = Field(18, ge=0, le=999)
+    purifier_enabled: bool = Field(False, alias="purifierEnabled")
+    purifier_level: int = Field(0, ge=0, le=3, alias="purifierLevel")
+    fragrance: Literal["off", "forest", "ocean", "citrus"] = "off"
+
+
+class MediaTrack(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: str
+    title: str
+    artist: str
+    album: str = ""
+    artwork_url: str = Field("", alias="artworkUrl")
+    preview_url: str = Field("", alias="previewUrl")
+    duration_seconds: int = Field(0, ge=0, alias="durationSeconds")
+
+
+class MediaState(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    source: Literal["none", "music", "radio", "podcast"] = "none"
+    playing: bool = False
+    volume: int = Field(35, ge=0, le=100)
+    current_index: int = Field(0, ge=0, alias="currentIndex")
+    current: MediaTrack | None = None
+    queue: list[MediaTrack] = Field(default_factory=list)
+
+
 class VehicleState(BaseModel):
     """Trusted server-side state for the simulated vehicle."""
 
@@ -81,8 +141,16 @@ class VehicleState(BaseModel):
         default_factory=AmbientLightState, alias="ambientLight"
     )
     defrost: DefrostState = Field(default_factory=DefrostState)
+    doors: DoorState = Field(default_factory=DoorState)
+    mirrors: MirrorState = Field(default_factory=MirrorState)
+    wiper_mode: Literal["off", "auto", "slow", "medium", "high"] = Field(
+        "off", alias="wiperMode"
+    )
+    air_quality: AirQualityState = Field(default_factory=AirQualityState, alias="airQuality")
     child_lock: bool = Field(False, alias="childLock")
     trunk_open: bool = Field(False, alias="trunkOpen")
+    charge_port_open: bool = Field(False, alias="chargePortOpen")
+    media: MediaState = Field(default_factory=MediaState)
     weather: str = "多云"
     rain_probability: float = Field(20, alias="rainProbability")
     current_location: str = Field("京承高速模拟起点", alias="currentLocation")

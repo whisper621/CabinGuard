@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from .domains import domain_for_tool
 from .event_store import EventStore
+from .media import MediaToolExecutor
 from .memory import SessionMemoryExecutor
 from .models import ToolExecution, Trace, VehicleState
 from .navigation import NavigationToolExecutor
@@ -25,8 +26,9 @@ from .policy import (
     is_place_search_requested,
 )
 from .policy_kernel import authorize_tool
-from .session import CabinSession, SessionStore
+from .session import CabinSession, PendingDoorAction, PendingSunroofAction, SessionStore
 from .tools import (
+    MEDIA_TOOL_NAMES,
     ONLINE_TOOL_NAMES,
     SESSION_TOOL_NAMES,
     TOOL_DEFINITIONS,
@@ -37,12 +39,13 @@ from .tools import (
 from .utterance import (
     cabin_device_clarification,
     deterministic_cabin_tool_inputs,
+    deterministic_extended_tool_inputs,
     navigation_query,
     normalize_user_utterance,
     resolve_cabin_device_defaults,
 )
 
-AGENT_PROMPT_VERSION = "6.0.0-python"
+AGENT_PROMPT_VERSION = "7.0.0-python"
 MAX_AGENT_TURNS = 6
 
 SYSTEM_PROMPT = """你是 CabinGuard，一名可信的智能座舱任务 Agent。你的职责是把用户目标转成真实工具调用，并依据工具返回值用简洁中文反馈。
@@ -64,7 +67,10 @@ SYSTEM_PROMPT = """你是 CabinGuard，一名可信的智能座舱任务 Agent�
 14. 车窗、座椅、氛围灯和除霜先调用 get_vehicle_state，再调用 control_cabin_device；工具返回的 reject/clamp 约束结果是最终裁决。
 15. 回答“你会什么”时调用 get_capabilities，以运行时注册表为准，不能照提示词罗列不存在的能力。
 16. 仅在用户明确说“记住/忘记/删除偏好”时调用 manage_preferences 写操作；偏好和行程只保留在当前 30 分钟演示会话，不得称为账号级长期记忆。
-17. 服务端会清理“嗯、呃”等口语填充词；不要因为语气词遗漏任务。普通座椅/车窗“打开”请求若缺少参数，服务端会提供与乘员、车速相关的安全默认值，必须完成全部任务并在回复中披露默认值；无法安全补全时才一次列全待补信息。"""
+17. 服务端会清理“嗯、呃”等口语填充词；不要因为语气词遗漏任务。普通座椅/车窗“打开”请求若缺少参数，服务端会提供与乘员、车速相关的安全默认值，必须完成全部任务并在回复中披露默认值；无法安全补全时才一次列全待补信息。
+18. 媒体请求使用 play_media 联网加载真实 30 秒试听；暂停、上下曲和音量使用 control_media。不得声称提供完整歌曲版权。
+19. 车门、雨刷、后视镜、空气净化、儿童锁和充电口必须使用对应工具。开启车门需要明确具体车门，且由服务端校验驻车、儿童锁和一次性确认。
+20. 雨雾场景可组合关闭车窗、开启前后除霜、自动雨刷和后视镜加热；每一项都必须有成功工具回执。"""
 
 PLAN_PROMPT = """服务端已为本轮请求编译可信任务图。你只能调用 allowedTools 中的工具，并遵循节点依赖；超出范围的调用会被策略核拒绝。任务图如下：\n{plan}"""
 
@@ -111,6 +117,27 @@ def _fallback_from_receipts(traces: Sequence[Trace]) -> str:
                 f"已开始导航到{output.get('destination')}（{output.get('route_distance_km')} 公里，"
                 f"约 {output.get('eta_minutes')} 分钟，来源 {output.get('route_provider')}）"
             )
+        elif trace.name == "play_media" and output.get("executed") is True:
+            current = output.get("current")
+            if isinstance(current, dict):
+                completed.append(
+                    f"已加载{current.get('artist', '未知艺人')}的《{current.get('title', '试听')}》30 秒试听"
+                )
+        elif trace.name == "control_media" and output.get("executed") is True:
+            completed.append(f"媒体控制已执行（{output.get('action')}）")
+        elif trace.name == "control_door" and output.get("executed") is True:
+            door = zone_labels.get(str(output.get("door")), str(output.get("door") or ""))
+            completed.append(f"{door}车门已{'打开' if output.get('open') else '关闭'}")
+        elif trace.name == "control_wiper" and output.get("executed") is True:
+            completed.append(f"雨刷已切换为 {output.get('mode')} 模式")
+        elif trace.name == "control_mirror" and output.get("executed") is True:
+            completed.append("后视镜状态已更新")
+        elif trace.name == "control_air_quality" and output.get("executed") is True:
+            completed.append("空气净化与香氛状态已更新")
+        elif trace.name == "control_child_lock" and output.get("executed") is True:
+            completed.append(f"儿童锁已{'开启' if output.get('enabled') else '关闭'}")
+        elif trace.name == "control_charge_port" and output.get("executed") is True:
+            completed.append(f"充电口已{'打开' if output.get('open') else '关闭'}")
     if completed:
         message = "；".join(completed) + "。"
         if blocked:
@@ -275,12 +302,14 @@ class AgentService:
         store: SessionStore,
         client: DeepSeekClient | None = None,
         navigation: NavigationToolExecutor | None = None,
+        media: MediaToolExecutor | None = None,
         memory: SessionMemoryExecutor | None = None,
         events: EventStore | None = None,
     ) -> None:
         self.store = store
         self.client = client or DeepSeekClient()
         self.navigation = navigation or NavigationToolExecutor()
+        self.media = media or MediaToolExecutor()
         self.memory = memory or SessionMemoryExecutor(store)
         self.events = events or EventStore()
 
@@ -323,10 +352,11 @@ class AgentService:
             return None
 
         decision = classify_confirmation(text)
+        pending_action = session.pending_action
         if decision == "cancel":
             self.store.clear_pending_action(session)
             return self._response(
-                message="已取消本次高速天窗操作。",
+                message="已取消本次高风险车身操作。",
                 session=session,
                 vehicle=session.vehicle,
                 traces=[],
@@ -335,9 +365,9 @@ class AgentService:
                 total_tokens=0,
             )
 
-        if decision == "confirm":
+        if decision == "confirm" and isinstance(pending_action, PendingSunroofAction):
             pending = self.store.take_sunroof_confirmation(session)
-            if pending:
+            if pending is not None:
                 tool_input = {
                     "target_percent": pending.target_percent,
                     "confirmed": True,
@@ -373,9 +403,51 @@ class AgentService:
                     turns=0,
                     total_tokens=0,
                 )
+        if decision == "confirm" and isinstance(pending_action, PendingDoorAction):
+            pending_door = self.store.take_door_confirmation(session)
+            if pending_door is not None:
+                door_input = {
+                    "door": pending_door.door,
+                    "action": pending_door.action,
+                    "confirmed": True,
+                }
+                execution = execute_tool(
+                    "control_door",
+                    door_input,
+                    session.vehicle,
+                    ToolContext(allow_door_open=True, bypass_read_prerequisites=True),
+                )
+                self.store.update_vehicle(session, execution.vehicle)
+                trace = Trace(
+                    id=f"server-confirmation-{int(asyncio.get_event_loop().time() * 1000)}",
+                    name="control_door",
+                    input=door_input,
+                    output=execution.output,
+                    status=execution.status,
+                )
+                door_labels = {
+                    "driver": "主驾",
+                    "passenger": "副驾",
+                    "rear_left": "左后",
+                    "rear_right": "右后",
+                }
+                result_message = (
+                    f"已根据确认打开{door_labels.get(pending_door.door, pending_door.door)}车门。"
+                    if execution.status == "success"
+                    else f"车门未打开：{execution.output.get('reason', '安全条件不满足')}。"
+                )
+                return self._response(
+                    message=result_message,
+                    session=session,
+                    vehicle=execution.vehicle,
+                    traces=[trace],
+                    model="server-confirmation",
+                    turns=0,
+                    total_tokens=0,
+                )
 
         return self._response(
-            message="我没有执行天窗操作。请明确回复“确认继续”或“取消”，其他表达不会被视为高风险授权。",
+            message="我没有执行高风险车身操作。请明确回复“确认继续”或“取消”，其他表达不会被视为授权。",
             session=session,
             vehicle=session.vehicle,
             traces=[],
@@ -450,15 +522,19 @@ class AgentService:
         traces: list[Trace] = []
         model_name = "deepseek"
         total_tokens = 0
-        deterministic_inputs = (
-            deterministic_cabin_tool_inputs(
-                normalized_text,
-                speed_kmh=vehicle.speed,
-                occupant_role=session.occupant_role,
-            )
-            if input_defaults
-            else []
-        )
+        extended_inputs = deterministic_extended_tool_inputs(normalized_text)
+        deterministic_inputs = [
+            *(
+                deterministic_cabin_tool_inputs(
+                    normalized_text,
+                    speed_kmh=vehicle.speed,
+                    occupant_role=session.occupant_role,
+                )
+                if input_defaults or extended_inputs
+                else []
+            ),
+            *extended_inputs,
+        ]
         deterministic_batch_pending = bool(deterministic_inputs)
         deterministic_navigation_query = (
             navigation_query(normalized_text) if deterministic_batch_pending else None
@@ -629,6 +705,9 @@ class AgentService:
                     on_sunroof_confirmation_required=lambda target: (
                         self.store.create_sunroof_confirmation(session, target)
                     ),
+                    on_door_confirmation_required=lambda door, action: (
+                        self.store.create_door_confirmation(session, door, action)
+                    ),
                 )
                 task_node = plan.node_for_tool(name)
                 preferred_domain = task_node.domain if task_node else None
@@ -656,6 +735,8 @@ class AgentService:
                             "policy": decision.policy,
                         },
                     )
+                elif name in MEDIA_TOOL_NAMES:
+                    execution = await self.media.execute(name, tool_input, vehicle, tool_context)
                 elif name in ONLINE_TOOL_NAMES:
                     execution = await self.navigation.execute(
                         name, tool_input, vehicle, session, tool_context

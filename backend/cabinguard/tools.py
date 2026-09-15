@@ -10,8 +10,10 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from .models import GeoPoint, ToolExecution, VehicleState
 from .signals import evaluate_write, signal_state
 
-TOOL_VERSION = "6.0.0-python"
-ONLINE_TOOL_NAMES = frozenset({"search_places", "plan_navigation"})
+TOOL_VERSION = "7.0.0-python"
+NAVIGATION_TOOL_NAMES = frozenset({"search_places", "plan_navigation"})
+MEDIA_TOOL_NAMES = frozenset({"play_media"})
+ONLINE_TOOL_NAMES = NAVIGATION_TOOL_NAMES | MEDIA_TOOL_NAMES
 
 CHARGING_STATIONS: tuple[dict[str, object], ...] = (
     {
@@ -77,6 +79,46 @@ class ControlTrunkInput(StrictToolInput):
     action: str = Field(pattern="^(open|close)$")
 
 
+class ControlDoorInput(StrictToolInput):
+    door: Literal["driver", "passenger", "rear_left", "rear_right"]
+    action: Literal["open", "close"]
+    confirmed: bool = False
+
+
+class ControlWiperInput(StrictToolInput):
+    mode: Literal["off", "auto", "slow", "medium", "high"]
+
+
+class ControlMirrorInput(StrictToolInput):
+    side: Literal["driver", "passenger", "both"]
+    folded: bool | None = None
+    heating: bool | None = None
+
+
+class ControlAirQualityInput(StrictToolInput):
+    purifier_enabled: bool | None = None
+    purifier_level: int | None = Field(default=None, ge=0, le=3)
+    fragrance: Literal["off", "forest", "ocean", "citrus"] | None = None
+
+
+class ControlChildLockInput(StrictToolInput):
+    enabled: bool
+
+
+class ControlChargePortInput(StrictToolInput):
+    action: Literal["open", "close"]
+
+
+class PlayMediaInput(StrictToolInput):
+    query: str = Field(min_length=1, max_length=80)
+    limit: int = Field(default=6, ge=1, le=10)
+
+
+class ControlMediaInput(StrictToolInput):
+    action: Literal["play", "pause", "stop", "next", "previous", "set_volume"]
+    value: int | None = Field(default=None, ge=0, le=100)
+
+
 class ControlCabinDeviceInput(StrictToolInput):
     device: Literal["window", "seat", "ambient_light", "defrost"]
     zone: Literal["driver", "passenger", "rear_left", "rear_right", "front", "rear", "all"]
@@ -104,7 +146,16 @@ TOOL_MODELS: dict[str, type[StrictToolInput]] = {
     "plan_navigation": PlanNavigationInput,
     "control_sunroof": ControlSunroofInput,
     "control_trunk": ControlTrunkInput,
+    "control_door": ControlDoorInput,
+    "control_wiper": ControlWiperInput,
+    "control_mirror": ControlMirrorInput,
+    "control_air_quality": ControlAirQualityInput,
+    "control_child_lock": ControlChildLockInput,
+    "control_charge_port": ControlChargePortInput,
     "control_cabin_device": ControlCabinDeviceInput,
+    "get_media_state": EmptyInput,
+    "play_media": PlayMediaInput,
+    "control_media": ControlMediaInput,
     "get_capabilities": EmptyInput,
     "manage_preferences": ManagePreferencesInput,
     "query_trip_history": EmptyInput,
@@ -123,7 +174,16 @@ TOOL_DESCRIPTIONS = {
     "plan_navigation": "基于 search_places 返回的候选 ID，调用外部道路服务生成真实道路距离、ETA、路线折线与步骤。需要用户明确导航意图。",
     "control_sunroof": "设置天窗开度。工具层会强制执行天气、车速和确认校验。",
     "control_trunk": "开启或关闭后备箱。行驶中会被工具层阻止。",
+    "control_door": "开关指定车门。开门需要驻车条件和一次性用户确认，儿童锁会阻止后门开启。",
+    "control_wiper": "设置雨刷挡位，支持关闭、自动、低速、中速和高速。",
+    "control_mirror": "控制左右后视镜折叠或镜面加热，可同时操作两侧。",
+    "control_air_quality": "控制空气净化器、净化挡位和座舱香氛。",
+    "control_child_lock": "由有权限的乘员开启或关闭后排儿童锁。",
+    "control_charge_port": "在驻车条件下开启或关闭充电口盖。",
     "control_cabin_device": "控制车窗、座椅加热/通风、氛围灯或前后风挡除霜。执行前先读取车辆状态；工具层会应用 VSS 对齐的声明式约束。",
+    "get_media_state": "读取当前曲目、播放状态、音量和队列长度。",
+    "play_media": "联网搜索音乐并加载真实可播放的 30 秒试听队列；完整歌曲受内容版权限制。",
+    "control_media": "控制当前媒体的播放、暂停、停止、上下曲和音量。",
     "get_capabilities": "读取当前 Agent 实际注册的工具、VSS 信号、约束和外部集成摘要。回答能力范围问题时调用。",
     "manage_preferences": "在当前演示会话内记住、列出或删除用户明确指定的偏好。remember/forget 必须来自本轮用户明确要求。",
     "query_trip_history": "读取当前演示会话内由成功导航回执生成的最近行程记录。",
@@ -153,9 +213,13 @@ class ToolContext:
     place_search_authorized: bool = False
     allowed_navigation_destinations: tuple[str, ...] = ()
     allow_high_speed_sunroof: bool = False
+    allow_door_open: bool = False
     memory_write_authorized: bool = False
     bypass_read_prerequisites: bool = False
     on_sunroof_confirmation_required: Callable[[int], None] | None = field(default=None, repr=False)
+    on_door_confirmation_required: Callable[[str, str], None] | None = field(
+        default=None, repr=False
+    )
 
 
 def _blocked(
@@ -258,7 +322,11 @@ def _execute_cabin_device(
 
     zones = {"driver", "passenger", "rear_left", "rear_right"}
     if parsed.device == "window":
-        if parsed.action != "set_position" or parsed.zone not in zones or parsed.value is None:
+        if (
+            parsed.action != "set_position"
+            or parsed.zone not in zones | {"all"}
+            or parsed.value is None
+        ):
             return _blocked(
                 vehicle,
                 "车窗控制需要座位区域、set_position 和 0–100 的 value",
@@ -276,21 +344,29 @@ def _execute_cabin_device(
             "rear_left": "rear_left",
             "rear_right": "rear_right",
         }
-        signal_path = path_by_zone[parsed.zone]
-        decision = evaluate_write(signal_path, parsed.value, _current_signals(vehicle))
-        if not decision.allowed:
-            return _blocked(
-                vehicle,
-                decision.message or "车窗操作被安全策略阻止",
-                code=decision.code,
-                suggestion=decision.suggestion,
-                constraint_id=decision.constraint_id,
-            )
-        applied_value = int(decision.value)
-        next_windows = vehicle.windows.model_copy(
-            update={attribute_by_zone[parsed.zone]: applied_value}
-        )
+        target_zones = sorted(zones) if parsed.zone == "all" else [parsed.zone]
+        updates: dict[str, int] = {}
+        decisions = []
+        for zone in target_zones:
+            signal_path = path_by_zone[zone]
+            decision = evaluate_write(signal_path, parsed.value, _current_signals(vehicle))
+            if not decision.allowed:
+                return _blocked(
+                    vehicle,
+                    decision.message or "车窗操作被安全策略阻止",
+                    code=decision.code,
+                    suggestion=decision.suggestion,
+                    constraint_id=decision.constraint_id,
+                )
+            updates[attribute_by_zone[zone]] = int(decision.value)
+            decisions.append((signal_path, decision))
+        applied_value = min(updates.values())
+        next_windows = vehicle.windows.model_copy(update=updates)
         next_vehicle = vehicle.model_copy(update={"windows": next_windows})
+        constraint_payload = next(
+            (_constraint_details(decision) for _, decision in decisions if decision.action != "allow"),
+            {},
+        )
         return ToolExecution(
             vehicle=next_vehicle,
             status="success",
@@ -299,8 +375,8 @@ def _execute_cabin_device(
                 "device": parsed.device,
                 "zone": parsed.zone,
                 "position_percent": applied_value,
-                "signal_path": signal_path,
-                **_constraint_details(decision),
+                "signal_path": decisions[0][0] if len(decisions) == 1 else "Vehicle.Cabin.Door.*.*.Window.Position",
+                **constraint_payload,
             },
         )
 
@@ -388,6 +464,150 @@ def _execute_cabin_device(
     return _blocked(vehicle, "不支持的座舱设备", code="unsupported_device")
 
 
+def _execute_door(
+    parsed: ControlDoorInput,
+    vehicle: VehicleState,
+    context: ToolContext,
+) -> ToolExecution:
+    if not context.bypass_read_prerequisites and not _has_prior(context, "get_vehicle_state"):
+        return _blocked(
+            vehicle,
+            "开关车门前必须先读取车速、挡位与儿童锁状态",
+            code="vehicle_state_required",
+            retryable=True,
+        )
+    path_by_door = {
+        "driver": "Vehicle.Cabin.Door.Row1.DriverSide.IsOpen",
+        "passenger": "Vehicle.Cabin.Door.Row1.PassengerSide.IsOpen",
+        "rear_left": "Vehicle.Cabin.Door.Row2.DriverSide.IsOpen",
+        "rear_right": "Vehicle.Cabin.Door.Row2.PassengerSide.IsOpen",
+    }
+    target_open = parsed.action == "open"
+    signal_path = path_by_door[parsed.door]
+    decision = evaluate_write(signal_path, target_open, _current_signals(vehicle))
+    if not decision.allowed:
+        return _blocked(
+            vehicle,
+            decision.message or "车门操作被安全策略阻止",
+            code=decision.code,
+            suggestion=decision.suggestion,
+            constraint_id=decision.constraint_id,
+        )
+    if target_open and not context.allow_door_open:
+        if context.on_door_confirmation_required:
+            context.on_door_confirmation_required(parsed.door, parsed.action)
+        return _blocked(
+            vehicle,
+            "开启车门需要一次性用户确认",
+            code="door_confirmation_required",
+            confirmation_required=True,
+            suggestion="确认周围安全后回复“确认继续”",
+        )
+    next_doors = vehicle.doors.model_copy(update={parsed.door: target_open})
+    next_vehicle = vehicle.model_copy(update={"doors": next_doors})
+    return ToolExecution(
+        vehicle=next_vehicle,
+        status="success",
+        output={
+            "executed": True,
+            "door": parsed.door,
+            "action": parsed.action,
+            "open": target_open,
+            "signal_path": signal_path,
+        },
+    )
+
+
+def _execute_mirror(parsed: ControlMirrorInput, vehicle: VehicleState) -> ToolExecution:
+    if parsed.folded is None and parsed.heating is None:
+        return _blocked(
+            vehicle,
+            "后视镜控制至少需要 folded 或 heating 参数",
+            code="missing_device_value",
+        )
+    sides = ("driver", "passenger") if parsed.side == "both" else (parsed.side,)
+    updates: dict[str, bool] = {}
+    for side in sides:
+        if parsed.folded is not None:
+            updates[f"{side}_folded"] = parsed.folded
+        if parsed.heating is not None:
+            updates[f"{side}_heating"] = parsed.heating
+    next_mirrors = vehicle.mirrors.model_copy(update=updates)
+    return ToolExecution(
+        vehicle=vehicle.model_copy(update={"mirrors": next_mirrors}),
+        status="success",
+        output={"executed": True, "side": parsed.side, **next_mirrors.model_dump(by_alias=True)},
+    )
+
+
+def _execute_air_quality(
+    parsed: ControlAirQualityInput, vehicle: VehicleState
+) -> ToolExecution:
+    if (
+        parsed.purifier_enabled is None
+        and parsed.purifier_level is None
+        and parsed.fragrance is None
+    ):
+        return _blocked(
+            vehicle,
+            "空气质量控制至少需要净化器开关、挡位或香氛参数",
+            code="missing_device_value",
+        )
+    updates: dict[str, object] = {}
+    if parsed.purifier_enabled is not None:
+        updates["purifier_enabled"] = parsed.purifier_enabled
+        if not parsed.purifier_enabled and parsed.purifier_level is None:
+            updates["purifier_level"] = 0
+    if parsed.purifier_level is not None:
+        updates["purifier_level"] = parsed.purifier_level
+        updates["purifier_enabled"] = parsed.purifier_level > 0
+    if parsed.fragrance is not None:
+        updates["fragrance"] = parsed.fragrance
+    next_air = vehicle.air_quality.model_copy(update=updates)
+    return ToolExecution(
+        vehicle=vehicle.model_copy(update={"air_quality": next_air}),
+        status="success",
+        output={"executed": True, **next_air.model_dump(by_alias=True)},
+    )
+
+
+def _execute_media_control(parsed: ControlMediaInput, vehicle: VehicleState) -> ToolExecution:
+    media = vehicle.media
+    if parsed.action == "set_volume":
+        if parsed.value is None:
+            return _blocked(vehicle, "设置音量需要 0–100 的 value", code="missing_media_volume")
+        next_media = media.model_copy(update={"volume": parsed.value})
+    elif parsed.action == "stop":
+        next_media = media.model_copy(update={"playing": False, "source": "none", "current": None, "queue": []})
+    else:
+        if not media.queue or media.current is None:
+            return _blocked(
+                vehicle,
+                "当前没有已加载的媒体内容",
+                code="media_queue_empty",
+                suggestion="先说出歌曲或歌手名称开始播放",
+            )
+        if parsed.action == "next":
+            index = (media.current_index + 1) % len(media.queue)
+            next_media = media.model_copy(update={"current_index": index, "current": media.queue[index], "playing": True})
+        elif parsed.action == "previous":
+            index = (media.current_index - 1) % len(media.queue)
+            next_media = media.model_copy(update={"current_index": index, "current": media.queue[index], "playing": True})
+        else:
+            next_media = media.model_copy(update={"playing": parsed.action == "play"})
+    return ToolExecution(
+        vehicle=vehicle.model_copy(update={"media": next_media}),
+        status="success",
+        output={
+            "executed": True,
+            "action": parsed.action,
+            "playing": next_media.playing,
+            "volume": next_media.volume,
+            "current": next_media.current.model_dump(by_alias=True) if next_media.current else None,
+        },
+    )
+
+
 def execute_tool(
     name: str,
     raw_input: Mapping[str, Any],
@@ -455,11 +675,17 @@ def execute_tool(
                 "destination": vehicle.destination,
                 "cabin_devices": {
                     "windows": vehicle.windows.model_dump(by_alias=True),
+                    "doors": vehicle.doors.model_dump(by_alias=True),
                     "seats": vehicle.seats.model_dump(by_alias=True),
                     "ambient_light": vehicle.ambient_light.model_dump(by_alias=True),
                     "defrost": vehicle.defrost.model_dump(by_alias=True),
+                    "mirrors": vehicle.mirrors.model_dump(by_alias=True),
+                    "wiper_mode": vehicle.wiper_mode,
+                    "air_quality": vehicle.air_quality.model_dump(by_alias=True),
                     "child_lock": vehicle.child_lock,
                     "trunk_open": vehicle.trunk_open,
+                    "charge_port_open": vehicle.charge_port_open,
+                    "media": vehicle.media.model_dump(by_alias=True),
                 },
             },
         )
@@ -492,6 +718,21 @@ def execute_tool(
                 "target_temperature_c": vehicle.target_temperature,
                 "fan_level": vehicle.fan_level,
                 "circulation": vehicle.circulation,
+            },
+        )
+
+    if name == "get_media_state":
+        return ToolExecution(
+            vehicle=vehicle,
+            status="success",
+            output={
+                "source": vehicle.media.source,
+                "playing": vehicle.media.playing,
+                "volume": vehicle.media.volume,
+                "current": vehicle.media.current.model_dump(by_alias=True)
+                if vehicle.media.current
+                else None,
+                "queue_size": len(vehicle.media.queue),
             },
         )
 
@@ -671,6 +912,63 @@ def execute_tool(
         assert isinstance(parsed, ControlCabinDeviceInput)
         return _execute_cabin_device(parsed, vehicle, context)
 
+    if name == "control_door":
+        assert isinstance(parsed, ControlDoorInput)
+        return _execute_door(parsed, vehicle, context)
+
+    if name == "control_wiper":
+        assert isinstance(parsed, ControlWiperInput)
+        next_vehicle = vehicle.model_copy(update={"wiper_mode": parsed.mode})
+        return ToolExecution(
+            vehicle=next_vehicle,
+            status="success",
+            output={"executed": True, "mode": parsed.mode},
+        )
+
+    if name == "control_mirror":
+        assert isinstance(parsed, ControlMirrorInput)
+        return _execute_mirror(parsed, vehicle)
+
+    if name == "control_air_quality":
+        assert isinstance(parsed, ControlAirQualityInput)
+        return _execute_air_quality(parsed, vehicle)
+
+    if name == "control_child_lock":
+        assert isinstance(parsed, ControlChildLockInput)
+        next_vehicle = vehicle.model_copy(update={"child_lock": parsed.enabled})
+        return ToolExecution(
+            vehicle=next_vehicle,
+            status="success",
+            output={"executed": True, "enabled": parsed.enabled},
+        )
+
+    if name == "control_charge_port":
+        assert isinstance(parsed, ControlChargePortInput)
+        target_open = parsed.action == "open"
+        decision = evaluate_write(
+            "Vehicle.Body.ChargePort.IsOpen", target_open, _current_signals(vehicle)
+        )
+        if not decision.allowed:
+            return _blocked(
+                vehicle,
+                decision.message or "充电口操作被安全策略阻止",
+                code=decision.code,
+                suggestion=decision.suggestion,
+                constraint_id=decision.constraint_id,
+            )
+        next_vehicle = vehicle.model_copy(update={"charge_port_open": target_open})
+        return ToolExecution(
+            vehicle=next_vehicle,
+            status="success",
+            output={"executed": True, "action": parsed.action, "open": target_open},
+        )
+
+    if name == "control_media":
+        assert isinstance(parsed, ControlMediaInput)
+        return _execute_media_control(parsed, vehicle)
+
+    if name != "control_trunk":
+        return _blocked(vehicle, f"未知工具：{name}", code="unknown_tool")
     assert isinstance(parsed, ControlTrunkInput)
     if (
         parsed.action == "open"

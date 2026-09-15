@@ -243,3 +243,72 @@ def test_browser_location_changes_route_estimate() -> None:
     )
     assert result.status == "success"
     assert result.vehicle.route_distance_km != 18.6
+
+
+def test_door_open_requires_park_and_server_confirmation() -> None:
+    moving = execute_tool(
+        "control_door",
+        {"door": "rear_right", "action": "open", "confirmed": False},
+        vehicle(),
+        ToolContext(prior_successful_tools=("get_vehicle_state",)),
+    )
+    assert moving.status == "blocked"
+
+    parked = vehicle().model_copy(update={"speed": 0, "gear": "P"})
+    pending: list[tuple[str, str]] = []
+    confirmation = execute_tool(
+        "control_door",
+        {"door": "rear_right", "action": "open", "confirmed": True},
+        parked,
+        ToolContext(
+            prior_successful_tools=("get_vehicle_state",),
+            on_door_confirmation_required=lambda door, action: pending.append((door, action)),
+        ),
+    )
+    assert confirmation.status == "blocked"
+    assert pending == [("rear_right", "open")]
+
+    opened = execute_tool(
+        "control_door",
+        {"door": "rear_right", "action": "open", "confirmed": True},
+        parked,
+        ToolContext(allow_door_open=True, bypass_read_prerequisites=True),
+    )
+    assert opened.status == "success"
+    assert opened.vehicle.doors.rear_right is True
+
+
+def test_all_window_control_is_transactional() -> None:
+    parked = vehicle().model_copy(update={"speed": 0, "gear": "P"})
+    result = execute_tool(
+        "control_cabin_device",
+        {"device": "window", "zone": "all", "action": "set_position", "value": 35},
+        parked,
+        ToolContext(prior_successful_tools=("get_vehicle_state",)),
+    )
+    assert result.status == "success"
+    assert set(result.vehicle.windows.model_dump().values()) == {35}
+
+
+def test_extended_cockpit_tools_update_vehicle_state() -> None:
+    state = vehicle().model_copy(update={"speed": 0, "gear": "P"})
+    operations = [
+        ("control_wiper", {"mode": "auto"}),
+        ("control_mirror", {"side": "both", "heating": True}),
+        (
+            "control_air_quality",
+            {"purifier_enabled": True, "purifier_level": 3, "fragrance": "forest"},
+        ),
+        ("control_child_lock", {"enabled": True}),
+        ("control_charge_port", {"action": "open"}),
+    ]
+    for name, arguments in operations:
+        result = execute_tool(name, arguments, state)
+        assert result.status == "success"
+        state = result.vehicle
+    assert state.wiper_mode == "auto"
+    assert state.mirrors.driver_heating and state.mirrors.passenger_heating
+    assert state.air_quality.purifier_level == 3
+    assert state.air_quality.fragrance == "forest"
+    assert state.child_lock is True
+    assert state.charge_port_open is True

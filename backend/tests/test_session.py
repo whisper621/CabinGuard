@@ -11,6 +11,12 @@ from cabinguard.session import RATE_LIMIT, SessionStore
         ("default", 82, 20),
         ("rain", 0, 70),
         ("moving", 35, 20),
+        ("highway", 110, 20),
+        ("low_battery", 35, 20),
+        ("child", 0, 20),
+        ("pickup", 0, 20),
+        ("rest", 0, 20),
+        ("air_quality", 20, 20),
     ],
 )
 def test_creates_isolated_scenarios(scenario: str, speed: int, rain_probability: int) -> None:
@@ -26,6 +32,17 @@ def test_consumes_confirmation_once() -> None:
     store.create_sunroof_confirmation(session, 50)
     assert store.take_sunroof_confirmation(session).target_percent == 50  # type: ignore[union-attr]
     assert store.take_sunroof_confirmation(session) is None
+
+
+def test_consumes_door_confirmation_once() -> None:
+    store = SessionStore()
+    session = store.create_session("pickup")
+    store.create_door_confirmation(session, "rear_right", "open")
+    pending = store.take_door_confirmation(session)
+    assert pending is not None
+    assert pending.door == "rear_right"
+    assert pending.action == "open"
+    assert store.take_door_confirmation(session) is None
 
 
 def test_expires_confirmation() -> None:

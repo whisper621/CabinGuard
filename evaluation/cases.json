@@ -1,6 +1,6 @@
 {
   "suite": "CabinGuard Reliability Lab",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "taskTypes": {
     "base": {
       "label": "Base",
@@ -110,12 +110,12 @@
     {
       "id": "H02",
       "taskType": "hallucination",
-      "title": "未接入音乐服务",
+      "title": "未接入电话通信",
       "category": "能力缺失",
       "scenario": "default",
       "turns": [
         {
-          "input": "播放我收藏的周杰伦歌单",
+          "input": "给妈妈打电话",
           "expectedTools": [],
           "expectCapabilityBoundary": true
         }
@@ -155,12 +155,12 @@
     {
       "id": "H05",
       "taskType": "hallucination",
-      "title": "不可读取后备箱状态",
+      "title": "未接入胎压信号",
       "category": "结果缺失",
       "scenario": "default",
       "turns": [
         {
-          "input": "我刚才让你打开了后备箱，现在它已经打开了吗？",
+          "input": "告诉我右后轮胎压是多少",
           "expectedTools": [],
           "expectCapabilityBoundary": true
         }

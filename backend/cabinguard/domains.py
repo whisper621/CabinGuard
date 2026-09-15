@@ -54,7 +54,13 @@ DOMAIN_MANIFESTS: tuple[DomainManifest, ...] = (
         runtime="service",
         description="确定性执行空调、座椅、车窗、氛围灯与除霜动作。",
         tools=frozenset(
-            {"get_climate_state", "get_vehicle_state", "set_climate", "control_cabin_device"}
+            {
+                "get_climate_state",
+                "get_vehicle_state",
+                "set_climate",
+                "control_cabin_device",
+                "control_air_quality",
+            }
         ),
         permission_scope="cabin:read,cabin:write",
         sla_ms=300,
@@ -63,12 +69,31 @@ DOMAIN_MANIFESTS: tuple[DomainManifest, ...] = (
         id="body_safety",
         name="车身安全服务",
         runtime="service",
-        description="处理天窗与后备箱动作，强制执行天气、车速和确认约束。",
+        description="处理车门、天窗、后备箱、雨刷、后视镜与充电口，强制执行行车约束。",
         tools=frozenset(
-            {"get_vehicle_state", "get_weather", "control_sunroof", "control_trunk"}
+            {
+                "get_vehicle_state",
+                "get_weather",
+                "control_sunroof",
+                "control_trunk",
+                "control_door",
+                "control_wiper",
+                "control_mirror",
+                "control_child_lock",
+                "control_charge_port",
+            }
         ),
         permission_scope="vehicle:read,body:write",
         sla_ms=300,
+    ),
+    DomainManifest(
+        id="media",
+        name="媒体发现 Agent",
+        runtime="agent",
+        description="联网检索可核验的音乐试听内容，播放控制由确定性媒体服务执行。",
+        tools=frozenset({"get_media_state", "play_media", "control_media"}),
+        permission_scope="media:read-write",
+        sla_ms=5000,
     ),
     DomainManifest(
         id="memory",

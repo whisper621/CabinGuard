@@ -43,7 +43,7 @@ v0.8 的主演示统一位于 `/`：大地图作为工作画布，顶部只保�
 
 ## 3. 可观测性
 
-每次请求写入 `operation.started/completed/cancelled` 与 `plan.created`，每次调用写入 `policy.decision` 和 `tool.receipt`，场景仿真事件写入 `signal.injected`。Trace 关联 `planId`、`taskId`、领域、策略代码和执行前后 `stateVersion`；响应同时记录 `requestedModel` 与供应商返回的 `resolvedModel`。验证中心可按会话查看 SQLite 原始证据。
+每次请求写入 `operation.started/completed/cancelled` 与 `plan.created`，每次调用写入 `policy.decision` 和 `tool.receipt`，场景仿真事件写入 `signal.injected`。Trace 关联 `planId`、`taskId`、领域、策略代码和执行前后 `stateVersion`；响应分开记录请求的 `requestedModel`、供应商实际返回的 `resolvedModel` 与内部确定性路径的 `executionSource`。未调用供应商模型时 `resolvedModel` 为 `null`。验证中心可按会话查看 SQLite 原始证据。
 
 ## 4. 数据边界
 

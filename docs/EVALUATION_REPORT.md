@@ -1,6 +1,6 @@
 # CabinGuard 基线评测记录
 
-> **历史实跑记录。** 本文只证明对应日期、提交和少量旧任务的结果，不代表 v0.8 的 50 个模型语义任务已运行；当前口径见 [CURRENT_STATUS](CURRENT_STATUS.md)。
+> **历史实跑记录。** 本文主体只证明对应日期、提交和少量旧任务的结果。v0.8 已另行完成首轮 50×3 基线与问题集定向复测；现行数字、适用范围和待复跑项见 [CURRENT_STATUS](CURRENT_STATUS.md) 与 [EVALUATION](EVALUATION.md)。
 
 评测日期：2026-09-11  
 模型返回标识：`deepseek-flash`  

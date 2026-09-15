@@ -33,7 +33,7 @@
 | 文档 | 内容 | 适合读者 |
 | --- | --- | --- |
 | [评测方案](EVALUATION.md) | 200 条确定性合同、24 条组合合同、50 个模型语义任务与五维评分 | AI 产品、测试、研发 |
-| [评测报告](EVALUATION_REPORT.md) | 基线、失败归因、修复、复测和后续计划 | 面试官、项目评审 |
+| [历史评测报告](EVALUATION_REPORT.md) | v0.3–v0.4 的历史基线、失败归因与修复记录；当前结果看 CURRENT_STATUS 和 EVALUATION | 面试官、项目评审 |
 
 ## 阅读路径
 
@@ -41,7 +41,7 @@
 
 1. 根目录 [README](../README.md) 的“30 秒了解项目”。
 2. `/project` 产品说明页。
-3. [评测报告](EVALUATION_REPORT.md) 的结果与当前结论。
+3. [当前状态](CURRENT_STATUS.md) 与 [评测方案](EVALUATION.md) 的现行结果、边界和下一步。
 
 ### AI / 智能座舱产品经理：10 分钟
 
